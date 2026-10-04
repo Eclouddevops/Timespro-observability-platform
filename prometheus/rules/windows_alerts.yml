@@ -1,0 +1,100 @@
+groups:
+  - name: windows_alerts
+    interval: 60s
+    rules:
+
+      # ── Instance Down ─────────────────────────────────────────────
+      - alert: WindowsInstanceDown
+        expr: up{job="windows-exporter"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          os: windows
+        annotations:
+          summary: "Windows instance DOWN: {{ $labels.instance }}"
+          description: "Windows Exporter on {{ $labels.instance }} has been unreachable for 2 minutes"
+
+      # ── CPU ───────────────────────────────────────────────────────
+      - alert: WindowsHighCPU
+        expr: 100 - (avg by(instance) (rate(windows_cpu_time_total{mode="idle"}[5m])) * 100) > 85
+        for: 5m
+        labels:
+          severity: warning
+          os: windows
+        annotations:
+          summary: "High CPU on Windows server: {{ $labels.instance }}"
+          description: "CPU usage is {{ $value | printf \"%.1f\" }}% on {{ $labels.instance }}"
+
+      - alert: WindowsCriticalCPU
+        expr: 100 - (avg by(instance) (rate(windows_cpu_time_total{mode="idle"}[5m])) * 100) > 95
+        for: 2m
+        labels:
+          severity: critical
+          os: windows
+        annotations:
+          summary: "CRITICAL CPU on Windows server: {{ $labels.instance }}"
+          description: "CPU usage is {{ $value | printf \"%.1f\" }}% on {{ $labels.instance }}"
+
+      # ── Memory ────────────────────────────────────────────────────
+      - alert: WindowsHighMemory
+        expr: 100 - (windows_os_physical_memory_free_bytes / windows_cs_physical_memory_bytes * 100) > 85
+        for: 5m
+        labels:
+          severity: warning
+          os: windows
+        annotations:
+          summary: "High memory on Windows server: {{ $labels.instance }}"
+          description: "Memory usage is {{ $value | printf \"%.1f\" }}% on {{ $labels.instance }}"
+
+      - alert: WindowsCriticalMemory
+        expr: 100 - (windows_os_physical_memory_free_bytes / windows_cs_physical_memory_bytes * 100) > 95
+        for: 2m
+        labels:
+          severity: critical
+          os: windows
+        annotations:
+          summary: "CRITICAL memory on Windows server: {{ $labels.instance }}"
+          description: "Memory usage is {{ $value | printf \"%.1f\" }}% on {{ $labels.instance }}"
+
+      # ── Disk ──────────────────────────────────────────────────────
+      - alert: WindowsDiskWarning
+        expr: 100 - (windows_logical_disk_free_bytes{volume!~"HarddiskVolume.*"} / windows_logical_disk_size_bytes{volume!~"HarddiskVolume.*"} * 100) > 75
+        for: 5m
+        labels:
+          severity: warning
+          os: windows
+        annotations:
+          summary: "Disk space warning on Windows {{ $labels.instance }}"
+          description: "Drive {{ $labels.volume }} is {{ $value | printf \"%.1f\" }}% full on {{ $labels.instance }}"
+
+      - alert: WindowsDiskCritical
+        expr: 100 - (windows_logical_disk_free_bytes{volume!~"HarddiskVolume.*"} / windows_logical_disk_size_bytes{volume!~"HarddiskVolume.*"} * 100) > 90
+        for: 2m
+        labels:
+          severity: critical
+          os: windows
+        annotations:
+          summary: "CRITICAL disk on Windows {{ $labels.instance }}"
+          description: "Drive {{ $labels.volume }} is {{ $value | printf \"%.1f\" }}% full"
+
+      # ── Services ──────────────────────────────────────────────────
+      - alert: WindowsServiceDown
+        expr: windows_service_state{state="running"} == 0
+        for: 2m
+        labels:
+          severity: warning
+          os: windows
+        annotations:
+          summary: "Windows service stopped: {{ $labels.name }} on {{ $labels.instance }}"
+          description: "Service {{ $labels.name }} is not running on {{ $labels.instance }}"
+
+      # ── IIS ───────────────────────────────────────────────────────
+      - alert: WindowsIISDown
+        expr: windows_iis_current_connections == 0
+        for: 5m
+        labels:
+          severity: warning
+          os: windows
+        annotations:
+          summary: "IIS has no connections: {{ $labels.instance }}"
+          description: "IIS on {{ $labels.instance }} has 0 active connections"

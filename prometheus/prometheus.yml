@@ -26,24 +26,39 @@ scrape_configs:
           service: prometheus
           env: production
 
-  # ── Node Exporter (installed directly on EC2 host) ───
-  # Node Exporter runs on the HOST (not in Docker).
-  # 172.18.0.1 is the custom bridge gateway — the host IP reachable
-  # from inside the observability-platform_monitoring Docker network.
+  # ── Node Exporter — observability-server (Linux host) ─
+  # Runs directly on host as systemd service, not in Docker.
+  # 172.18.0.1 = Docker bridge gateway = host IP from inside containers.
   - job_name: 'node-exporter'
     static_configs:
       - targets: ['172.18.0.1:9100']
         labels:
           instance: 'observability-server'
           service: 'node-exporter'
+          os: 'linux'
           env: production
 
-  # ── File-based discovery for additional EC2 nodes ────
+  # ── File-based discovery — additional Linux EC2 nodes ─
   - job_name: 'ec2-nodes'
     file_sd_configs:
       - files:
           - /etc/prometheus/targets/ec2_nodes.yml
         refresh_interval: 30s
+
+  # ── Windows Exporter — Windows EC2 instances ──────────
+  # Windows Exporter (port 9182) replaces Node Exporter on Windows.
+  # Must be installed on each Windows instance — see docs/windows-setup.md
+  - job_name: 'windows-exporter'
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/windows_nodes.yml
+        refresh_interval: 30s
+    metrics_path: /metrics
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: '(.*):.*'
+        target_label: instance
+        replacement: '$1'
 
   # ── cAdvisor (Container Metrics) ─────────────────────
   - job_name: 'cadvisor'
