@@ -13,9 +13,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ ./app/
 
-# Create prompts directory (used at runtime for optional custom prompts)
+# Create prompts directory used at runtime
 RUN mkdir -p ./prompts
 
 EXPOSE 8888
 
-CMD ["python", "app/main.py"]
+# Run as module so relative imports work correctly
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8888", "--log-level", "info"]

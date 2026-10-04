@@ -1,17 +1,17 @@
 """
 AI Observability Agent
 ─────────────────────
-A FastAPI service that wraps an LLM (OpenAI/Anthropic) to provide
-intelligent analysis of Prometheus metrics and Grafana dashboards.
+FastAPI service providing LLM-powered infrastructure analysis.
 
 Endpoints:
-  GET  /health                 — liveness probe
-  GET  /metrics                — Prometheus metrics (for scraping)
-  POST /analyze                — ad-hoc analysis of a metric query
-  POST /investigate-alert      — root-cause analysis for a firing alert
-  POST /summarize              — daily/weekly infra health summary
-  GET  /daily-report           — trigger a fresh daily report
-  POST /chat                   — conversational interface
+  GET  /health                — liveness probe
+  GET  /metrics               — Prometheus scrape endpoint
+  POST /analyze               — analyze a PromQL query with AI
+  POST /investigate-alert     — root-cause analysis for a firing alert
+  POST /summarize             — infrastructure health summary
+  GET  /daily-report          — trigger a daily report
+  POST /chat                  — conversational interface
+  POST /alertmanager-webhook  — receive alerts from Alertmanager
 """
 
 import asyncio
@@ -21,7 +21,6 @@ from datetime import datetime
 
 import uvicorn
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATEST
@@ -38,15 +37,30 @@ from .models import (
 )
 from .notifier import Notifier
 
-load_dotenv()
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+# ── Logging ───────────────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s — %(message)s",
+)
 logger = logging.getLogger(__name__)
 
-# ── Prometheus metrics for self-monitoring ──────────────────────────
-ai_requests_total = Counter("ai_agent_requests_total", "Total AI agent requests", ["endpoint", "status"])
-ai_latency_seconds = Gauge("ai_agent_latency_seconds", "AI agent response latency", ["endpoint"])
-active_alerts_gauge = Gauge("ai_agent_active_alerts", "Currently tracked active alerts")
+# ── Prometheus self-metrics ───────────────────────────────────────────
+ai_requests_total = Counter(
+    "ai_agent_requests_total",
+    "Total AI agent requests",
+    ["endpoint", "status"],
+)
+ai_latency_seconds = Gauge(
+    "ai_agent_latency_seconds",
+    "AI agent response latency",
+    ["endpoint"],
+)
+active_alerts_gauge = Gauge(
+    "ai_agent_active_alerts",
+    "Currently tracked active alerts",
+)
 
+# ── App ───────────────────────────────────────────────────────────────
 app = FastAPI(
     title="AI Observability Agent",
     description="Intelligent infrastructure monitoring with LLM-powered analysis",
@@ -61,23 +75,54 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Services ─────────────────────────────────────────────────────────
-prom = PrometheusClient(os.getenv("PROMETHEUS_URL", "http://prometheus:9090"))
+# ── Services (initialised at module load — safe, no network calls yet) ─
+prom = PrometheusClient(
+    os.getenv("PROMETHEUS_URL", "http://prometheus:9090")
+)
 ai = AIEngine(
     openai_api_key=os.getenv("OPENAI_API_KEY"),
     anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
 )
 notifier = Notifier(slack_webhook=os.getenv("SLACK_WEBHOOK_URL"))
 alert_handler = AlertHandler(prom, ai, notifier)
-
 scheduler = AsyncIOScheduler()
+
+
+# ── Lifecycle ─────────────────────────────────────────────────────────
+
+@app.on_event("startup")
+async def startup():
+    try:
+        scheduler.start()
+        logger.info("AI Observability Agent started ✓")
+        logger.info("OpenAI  : %s", "configured" if os.getenv("OPENAI_API_KEY") else "not configured")
+        logger.info("Anthropic: %s", "configured" if os.getenv("ANTHROPIC_API_KEY") else "not configured")
+        logger.info("Slack   : %s", "configured" if os.getenv("SLACK_WEBHOOK_URL") else "not configured")
+    except Exception as e:
+        logger.error("Startup error: %s", e)
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    try:
+        scheduler.shutdown(wait=False)
+    except Exception:
+        pass
 
 
 # ── Routes ────────────────────────────────────────────────────────────
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+    return {
+        "status": "ok",
+        "timestamp": datetime.utcnow().isoformat(),
+        "ai_provider": (
+            "anthropic" if os.getenv("ANTHROPIC_API_KEY")
+            else "openai" if os.getenv("OPENAI_API_KEY")
+            else "none — set OPENAI_API_KEY or ANTHROPIC_API_KEY"
+        ),
+    }
 
 
 @app.get("/metrics")
@@ -88,9 +133,7 @@ async def metrics():
 
 @app.post("/analyze")
 async def analyze(req: AnalyzeRequest):
-    """
-    Run a PromQL query and return an AI-generated analysis.
-    """
+    """Run a PromQL query and return AI-generated analysis."""
     try:
         start = asyncio.get_event_loop().time()
         data = await prom.query(req.query)
@@ -99,8 +142,7 @@ async def analyze(req: AnalyzeRequest):
             data=data,
             context=req.context,
         )
-        latency = asyncio.get_event_loop().time() - start
-        ai_latency_seconds.labels("analyze").set(latency)
+        ai_latency_seconds.labels("analyze").set(asyncio.get_event_loop().time() - start)
         ai_requests_total.labels("analyze", "success").inc()
         return {"query": req.query, "data": data, "analysis": analysis}
     except Exception as e:
@@ -111,9 +153,7 @@ async def analyze(req: AnalyzeRequest):
 
 @app.post("/investigate-alert")
 async def investigate_alert(req: AlertInvestigationRequest):
-    """
-    Given a firing Alertmanager alert, perform root-cause analysis.
-    """
+    """Root-cause analysis for a firing alert."""
     try:
         result = await alert_handler.investigate(req)
         ai_requests_total.labels("investigate", "success").inc()
@@ -125,9 +165,7 @@ async def investigate_alert(req: AlertInvestigationRequest):
 
 @app.post("/summarize")
 async def summarize(req: SummarizeRequest):
-    """
-    Generate a human-readable infrastructure health summary.
-    """
+    """Generate infrastructure health summary."""
     try:
         report = await alert_handler.generate_summary(req.period_hours)
         ai_requests_total.labels("summarize", "success").inc()
@@ -139,7 +177,7 @@ async def summarize(req: SummarizeRequest):
 
 @app.get("/daily-report")
 async def daily_report():
-    """Trigger and return a fresh daily report."""
+    """Trigger a fresh daily report."""
     report = await alert_handler.generate_summary(period_hours=24)
     await notifier.send_slack(f"📊 *Daily Infra Report*\n{report}")
     return {"report": report}
@@ -147,11 +185,8 @@ async def daily_report():
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
-    """
-    Conversational interface — ask anything about your infrastructure.
-    """
+    """Conversational interface — ask anything about your infrastructure."""
     try:
-        # Pull current metric context
         context_metrics = await prom.get_current_context()
         response = await ai.chat(
             message=req.message,
@@ -167,74 +202,41 @@ async def chat(req: ChatRequest):
 
 @app.post("/alertmanager-webhook")
 async def alertmanager_webhook(payload: dict):
-    """
-    Alertmanager webhook receiver — automatically investigates
-    critical alerts and posts analysis to Slack.
-    """
+    """Receive alerts from Alertmanager and auto-investigate."""
     alerts = payload.get("alerts", [])
-    active_alerts_gauge.set(len([a for a in alerts if a.get("status") == "firing"]))
-
-    for alert in alerts:
-        if alert.get("status") == "firing":
-            asyncio.create_task(
-                alert_handler.auto_investigate_and_notify(alert)
-            )
-    return {"received": len(alerts)}
+    firing = [a for a in alerts if a.get("status") == "firing"]
+    active_alerts_gauge.set(len(firing))
+    for alert in firing:
+        asyncio.create_task(alert_handler.auto_investigate_and_notify(alert))
+    return {"received": len(alerts), "firing": len(firing)}
 
 
-# ── Scheduled Tasks ───────────────────────────────────────────────────
+# ── Scheduled Jobs ─────────────────────────────────────────────────────
 
 @scheduler.scheduled_job("cron", hour=8, minute=0)
 async def scheduled_daily_report():
-    """Send daily infrastructure health report every morning at 8am."""
     logger.info("Running scheduled daily report...")
     try:
         report = await alert_handler.generate_summary(period_hours=24)
         await notifier.send_slack(f"📊 *Daily Infra Report*\n{report}")
-        logger.info("Daily report sent.")
     except Exception as e:
         logger.error("Daily report failed: %s", e)
 
 
 @scheduler.scheduled_job("interval", minutes=5)
 async def check_ssl_expiry():
-    """Check SSL certificates and alert if any are expiring soon."""
     try:
-        expiring = await prom.query(
-            "(ssl_cert_not_after - time()) / 86400 < 30"
-        )
-        if expiring.get("data", {}).get("result"):
-            for cert in expiring["data"]["result"]:
-                domain = cert["metric"].get("instance", "unknown")
-                days = float(cert["value"][1])
-                if days < 7:
-                    await notifier.send_slack(
-                        f"🚨 *CRITICAL SSL*: `{domain}` expires in *{days:.0f} days*!"
-                    )
-                elif days < 30:
-                    await notifier.send_slack(
-                        f"⚠️ *SSL Warning*: `{domain}` expires in *{days:.0f} days*"
-                    )
+        expiring = await prom.query("(ssl_cert_not_after - time()) / 86400 < 30")
+        for cert in expiring.get("data", {}).get("result", []):
+            domain = cert["metric"].get("instance", "unknown")
+            days = float(cert["value"][1])
+            if days < 7:
+                await notifier.send_slack(
+                    f"🚨 *CRITICAL SSL*: `{domain}` expires in *{days:.0f} days*!"
+                )
+            elif days < 30:
+                await notifier.send_slack(
+                    f"⚠️ *SSL Warning*: `{domain}` expires in *{days:.0f} days*"
+                )
     except Exception as e:
         logger.warning("SSL check failed: %s", e)
-
-
-@app.on_event("startup")
-async def startup():
-    scheduler.start()
-    logger.info("AI Observability Agent started ✓")
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    scheduler.shutdown()
-
-
-if __name__ == "__main__":
-    uvicorn.run(
-        "app.main:app",
-        host="0.0.0.0",
-        port=8888,
-        reload=False,
-        log_level="info",
-    )
