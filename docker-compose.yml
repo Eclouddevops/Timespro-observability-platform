@@ -192,6 +192,45 @@ services:
       - alertmanager
 
   # ─────────────────────────────────────────────
+  # EC2 AUTO-DISCOVERY AGENT
+  # Automatically detects new EC2 instances and
+  # updates Prometheus targets every 2 minutes.
+  # Requires IAM role with ec2:DescribeInstances
+  # ─────────────────────────────────────────────
+  auto-discovery:
+    build:
+      context: ./auto-discovery
+      dockerfile: Dockerfile
+    container_name: ec2-auto-discovery
+    restart: unless-stopped
+    ports:
+      - "9877:9877"
+    environment:
+      - PROMETHEUS_URL=http://prometheus:9090
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - AWS_REGIONS=${AWS_REGIONS:-us-east-1}
+      - DISCOVERY_INTERVAL_MINUTES=${DISCOVERY_INTERVAL_MINUTES:-2}
+      - NODE_EXPORTER_PORT=9100
+      - CONNECT_TIMEOUT_SEC=3
+      - USE_PRIVATE_IP=${USE_PRIVATE_IP:-true}
+      - TAG_FILTER_KEY=${TAG_FILTER_KEY:-}
+      - TAG_FILTER_VALUE=${TAG_FILTER_VALUE:-true}
+      - AUTO_INSTALL_NODE_EXPORTER=${AUTO_INSTALL_NODE_EXPORTER:-false}
+      - SSH_KEY_PATH=/secrets/ec2-key.pem
+      - SSH_USER=${SSH_USER:-ubuntu}
+      - MSTEAMS_WEBHOOK_URL=${MSTEAMS_WEBHOOK_URL:-}
+      - EC2_TARGETS_FILE=/etc/prometheus/targets/ec2_nodes.yml
+    volumes:
+      # Share Prometheus targets directory so agent can write directly
+      - ./prometheus/targets:/etc/prometheus/targets
+      # Mount SSH key for auto Node Exporter install (optional)
+      - ${SSH_KEY_PATH:-/dev/null}:/secrets/ec2-key.pem:ro
+    networks:
+      - monitoring
+    depends_on:
+      - prometheus
+
+  # ─────────────────────────────────────────────
   # BLACKBOX EXPORTER (URL / SSL Monitoring)
   # ─────────────────────────────────────────────
   blackbox-exporter:

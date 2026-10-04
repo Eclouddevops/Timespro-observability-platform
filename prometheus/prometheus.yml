@@ -119,3 +119,10 @@ scrape_configs:
       - targets: ['ai-observability-agent:8888']
         labels:
           service: 'ai-observability-agent'
+
+  # ── EC2 Auto-Discovery Agent ──────────────────────────
+  - job_name: 'auto-discovery'
+    static_configs:
+      - targets: ['ec2-auto-discovery:9877']
+        labels:
+          service: 'ec2-auto-discovery'

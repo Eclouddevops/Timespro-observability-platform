@@ -1,0 +1,274 @@
+{
+  "uid": "ec2-auto-discovery",
+  "title": "🔍 EC2 Auto-Discovery",
+  "description": "Live view of all auto-discovered EC2 instances across all regions",
+  "tags": ["ec2", "auto-discovery", "aws"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "row",
+      "title": "🔍 Discovery Status",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "id": 2,
+      "title": "Total EC2 Discovered",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "fixed", "fixedColor": "blue" }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "Prometheus" }, "expr": "autodiscovery_instances_total", "legendFormat": "Total" }]
+    },
+    {
+      "id": 3,
+      "title": "Monitored (Node Exporter UP)",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": 0 },
+            { "color": "green", "value": 1 }
+          ]}
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "Prometheus" }, "expr": "autodiscovery_instances_monitored", "legendFormat": "Monitored" }]
+    },
+    {
+      "id": 4,
+      "title": "Missing Node Exporter",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": 0 },
+            { "color": "yellow", "value": 1 },
+            { "color": "red", "value": 3 }
+          ]}
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "Prometheus" }, "expr": "autodiscovery_instances_missing", "legendFormat": "Missing" }]
+    },
+    {
+      "id": 5,
+      "title": "Discovery Runs Today",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "fixed", "fixedColor": "green" }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "Prometheus" }, "expr": "increase(autodiscovery_runs_total[24h])", "legendFormat": "Runs" }]
+    },
+    {
+      "id": 6,
+      "title": "Last Discovery",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dateTimeAsIso",
+          "color": { "mode": "fixed", "fixedColor": "blue" }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "Prometheus" }, "expr": "autodiscovery_last_run_timestamp * 1000", "legendFormat": "Last Run" }]
+    },
+    {
+      "id": 7,
+      "title": "Discovery Errors",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": 0 },
+            { "color": "red", "value": 1 }
+          ]}
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "Prometheus" }, "expr": "increase(autodiscovery_errors_total[24h]) or vector(0)", "legendFormat": "Errors" }]
+    },
+    {
+      "id": 10, "type": "row",
+      "title": "📈 Discovery Trends",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 }
+    },
+    {
+      "id": 11,
+      "title": "Instance Count Over Time",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 15 }
+        }
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] }
+      },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "Prometheus" }, "expr": "autodiscovery_instances_total", "legendFormat": "Total Discovered" },
+        { "datasource": { "type": "prometheus", "uid": "Prometheus" }, "expr": "autodiscovery_instances_monitored", "legendFormat": "Monitored (NE UP)" },
+        { "datasource": { "type": "prometheus", "uid": "Prometheus" }, "expr": "autodiscovery_instances_missing", "legendFormat": "Missing Node Exporter" }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Auto-Discovery Agent — CPU & Memory",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10 }
+        }
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "Prometheus" }, "expr": "rate(process_cpu_seconds_total{job=\"auto-discovery\"}[5m]) * 100", "legendFormat": "CPU %" },
+        { "datasource": { "type": "prometheus", "uid": "Prometheus" }, "expr": "process_resident_memory_bytes{job=\"auto-discovery\"} / 1024 / 1024", "legendFormat": "Memory MB" }
+      ]
+    },
+    {
+      "id": 20, "type": "row",
+      "title": "🖥️ Discovered EC2 Instances",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 }
+    },
+    {
+      "id": 21,
+      "title": "All Auto-Discovered EC2 Instances",
+      "type": "table",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 15 },
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "Instance", "desc": false }]
+      },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "left" } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Status" },
+            "properties": [
+              { "id": "custom.width", "value": 100 },
+              { "id": "custom.displayMode", "value": "color-background" },
+              { "id": "mappings", "value": [{
+                "type": "value",
+                "options": {
+                  "1": { "text": "🟢 UP",   "color": "green", "index": 0 },
+                  "0": { "text": "🔴 DOWN", "color": "red",   "index": 1 }
+                }
+              }]}
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "CPU %" },
+            "properties": [
+              { "id": "unit", "value": "percent" },
+              { "id": "custom.displayMode", "value": "color-background" },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "green", "value": 0 },
+                { "color": "yellow", "value": 70 },
+                { "color": "red", "value": 90 }
+              ]}}
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Memory %" },
+            "properties": [
+              { "id": "unit", "value": "percent" },
+              { "id": "custom.displayMode", "value": "color-background" },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "green", "value": 0 },
+                { "color": "yellow", "value": 75 },
+                { "color": "red", "value": 90 }
+              ]}}
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "expr": "up{job=\"ec2-nodes\",monitored_by=\"auto-discovery\"}",
+          "instant": true, "format": "table", "legendFormat": ""
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "expr": "round(100 - (avg by(instance) (irate(node_cpu_seconds_total{mode=\"idle\",job=\"ec2-nodes\"}[5m])) * 100), 0.1)",
+          "instant": true, "format": "table", "legendFormat": ""
+        },
+        {
+          "refId": "C",
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "expr": "round((1 - (node_memory_MemAvailable_bytes{job=\"ec2-nodes\"} / node_memory_MemTotal_bytes{job=\"ec2-nodes\"})) * 100, 0.1)",
+          "instant": true, "format": "table", "legendFormat": ""
+        }
+      ],
+      "transformations": [
+        { "id": "merge", "options": {} },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "instance":      "Instance",
+              "instance_id":   "Instance ID",
+              "instance_type": "Type",
+              "region":        "Region",
+              "az":            "AZ",
+              "env":           "Env",
+              "Value #A":      "Status",
+              "Value #B":      "CPU %",
+              "Value #C":      "Memory %"
+            },
+            "indexByName": {
+              "Instance": 0, "Instance ID": 1, "Type": 2,
+              "Region": 3, "AZ": 4, "Env": 5,
+              "Status": 6, "CPU %": 7, "Memory %": 8
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
