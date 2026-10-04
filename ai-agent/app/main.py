@@ -83,7 +83,7 @@ ai = AIEngine(
     openai_api_key=os.getenv("OPENAI_API_KEY"),
     anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
 )
-notifier = Notifier(slack_webhook=os.getenv("SLACK_WEBHOOK_URL"))
+notifier = Notifier(teams_webhook=os.getenv("MSTEAMS_WEBHOOK_URL"))
 alert_handler = AlertHandler(prom, ai, notifier)
 scheduler = AsyncIOScheduler()
 
@@ -97,7 +97,7 @@ async def startup():
         logger.info("AI Observability Agent started ✓")
         logger.info("OpenAI  : %s", "configured" if os.getenv("OPENAI_API_KEY") else "not configured")
         logger.info("Anthropic: %s", "configured" if os.getenv("ANTHROPIC_API_KEY") else "not configured")
-        logger.info("Slack   : %s", "configured" if os.getenv("SLACK_WEBHOOK_URL") else "not configured")
+        logger.info("MSTeams : %s", "configured" if os.getenv("MSTEAMS_WEBHOOK_URL") else "not configured")
     except Exception as e:
         logger.error("Startup error: %s", e)
 
@@ -179,7 +179,7 @@ async def summarize(req: SummarizeRequest):
 async def daily_report():
     """Trigger a fresh daily report."""
     report = await alert_handler.generate_summary(period_hours=24)
-    await notifier.send_slack(f"📊 *Daily Infra Report*\n{report}")
+    await notifier.send_teams(report, title="📊 Daily Infrastructure Report", color="accent")
     return {"report": report}
 
 
@@ -218,7 +218,7 @@ async def scheduled_daily_report():
     logger.info("Running scheduled daily report...")
     try:
         report = await alert_handler.generate_summary(period_hours=24)
-        await notifier.send_slack(f"📊 *Daily Infra Report*\n{report}")
+        await notifier.send_teams(report, title="📊 Daily Infrastructure Report", color="accent")
     except Exception as e:
         logger.error("Daily report failed: %s", e)
 
@@ -231,12 +231,16 @@ async def check_ssl_expiry():
             domain = cert["metric"].get("instance", "unknown")
             days = float(cert["value"][1])
             if days < 7:
-                await notifier.send_slack(
-                    f"🚨 *CRITICAL SSL*: `{domain}` expires in *{days:.0f} days*!"
+                await notifier.send_alert(
+                    summary=f"SSL Certificate Expiring: {domain}",
+                    description=f"Certificate for **{domain}** expires in **{days:.0f} days**! Renew immediately.",
+                    severity="critical"
                 )
             elif days < 30:
-                await notifier.send_slack(
-                    f"⚠️ *SSL Warning*: `{domain}` expires in *{days:.0f} days*"
+                await notifier.send_alert(
+                    summary=f"SSL Certificate Warning: {domain}",
+                    description=f"Certificate for **{domain}** expires in **{days:.0f} days**. Plan renewal soon.",
+                    severity="warning"
                 )
     except Exception as e:
         logger.warning("SSL check failed: %s", e)

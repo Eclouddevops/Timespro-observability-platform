@@ -120,13 +120,10 @@ class AlertHandler:
             )
             result = await self.investigate(req)
 
-            emoji = "🔴" if severity == "critical" else "🟡"
-            msg = (
-                f"{emoji} *AI Alert Analysis: {alert_name}*\n"
-                f"Instance: `{instance}`\n\n"
-                f"{result['analysis']}"
-            )
-            await self.notifier.send_slack(msg)
+            color = "attention" if severity == "critical" else "warning"
+            title = f"🤖 AI Alert Analysis: {alert_name}"
+            body  = f"**Instance:** {instance}\n\n{result['analysis']}"
+            await self.notifier.send_teams(body, title=title, color=color)
         except Exception as e:
             logger.error("Auto-investigation failed for %s: %s", alert_name, e)
 

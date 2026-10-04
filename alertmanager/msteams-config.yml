@@ -1,0 +1,4 @@
+connectors:
+  # Default channel — all alerts go here unless overridden
+  - name: "alertmanager"
+    webhookUrl: "${MSTEAMS_WEBHOOK_URL}"

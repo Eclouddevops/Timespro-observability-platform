@@ -1,6 +1,5 @@
 global:
   resolve_timeout: 5m
-  slack_api_url: '${SLACK_WEBHOOK_URL}'
   smtp_smarthost: '${SMTP_HOST:-localhost:587}'
   smtp_from: '${SMTP_FROM:-alerts@example.com}'
   smtp_auth_username: '${SMTP_USER:-}'
@@ -12,143 +11,95 @@ templates:
 
 # ─── Route Tree ───────────────────────────────────────────────────────
 route:
-  receiver: 'default'
+  receiver: 'msteams-default'
   group_by: ['alertname', 'cluster', 'service']
   group_wait: 10s
   group_interval: 5m
   repeat_interval: 12h
 
   routes:
-    # Critical alerts → immediate Slack + PagerDuty
+    # Critical alerts → immediate notification
     - match:
         severity: critical
-      receiver: critical-alerts
+      receiver: msteams-critical
       group_wait: 0s
       repeat_interval: 1h
       continue: true
 
     # SSL expiry alerts
-    - match:
-        alertname: SSLCertExpiringCritical
-      receiver: ssl-alerts
+    - match_re:
+        alertname: 'SSLCertExpiring.*|SSLCertExpired'
+      receiver: msteams-ssl
       repeat_interval: 6h
-
-    - match:
-        alertname: SSLCertExpiringSoon
-      receiver: ssl-alerts
-      repeat_interval: 24h
 
     # ECS alerts
     - match:
         service_type: ecs
-      receiver: ecs-alerts
+      receiver: msteams-ecs
       group_by: ['alertname', 'service_name']
 
     # Lambda alerts
     - match:
         service_type: lambda
-      receiver: lambda-alerts
+      receiver: msteams-lambda
       group_by: ['alertname', 'function_name']
 
     # API Gateway alerts
     - match:
         service_type: api-gateway
-      receiver: api-alerts
+      receiver: msteams-api
       group_by: ['alertname', 'api_name']
 
-    # WAF alerts (lower priority)
+    # WAF alerts
     - match:
         service_type: waf
-      receiver: waf-alerts
+      receiver: msteams-waf
       group_wait: 30s
       repeat_interval: 24h
 
 # ─── Receivers ────────────────────────────────────────────────────────
+# All receivers post to alertmanager-msteams proxy (port 2000)
+# which converts alerts into MS Teams Adaptive Cards.
+# Each receiver maps to a named "connector" in msteams-config.yml
+# ──────────────────────────────────────────────────────────────────────
 receivers:
-  - name: 'default'
-    slack_configs:
-      - channel: '#monitoring-alerts'
-        title: '[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] Monitoring Alert'
-        text: >-
-          {{ range .Alerts }}
-          *Alert:* {{ .Annotations.summary }}
-          *Details:* {{ .Annotations.description }}
-          *Severity:* {{ .Labels.severity }}
-          {{ end }}
+
+  - name: 'msteams-default'
+    webhook_configs:
+      - url: 'http://alertmanager-msteams:2000/alertmanager'
+        send_resolved: true
+        http_config:
+          tls_config:
+            insecure_skip_verify: false
+
+  - name: 'msteams-critical'
+    webhook_configs:
+      - url: 'http://alertmanager-msteams:2000/alertmanager'
         send_resolved: true
 
-  - name: 'critical-alerts'
-    slack_configs:
-      - channel: '#monitoring-critical'
-        title: '🚨 [CRITICAL] {{ .GroupLabels.alertname }}'
-        text: >-
-          {{ range .Alerts }}
-          *{{ .Annotations.summary }}*
-          {{ .Annotations.description }}
-          {{ end }}
-        send_resolved: true
-    # Uncomment to enable PagerDuty
-    # pagerduty_configs:
-    #   - service_key: '${PAGERDUTY_SERVICE_KEY}'
-    #     description: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
-    # Uncomment to enable email
-    # email_configs:
-    #   - to: 'oncall@example.com'
-    #     subject: '[CRITICAL] {{ .GroupLabels.alertname }}'
-
-  - name: 'ssl-alerts'
-    slack_configs:
-      - channel: '#monitoring-ssl'
-        title: '🔐 SSL Certificate Alert: {{ .GroupLabels.alertname }}'
-        text: >-
-          {{ range .Alerts }}
-          *{{ .Annotations.summary }}*
-          {{ .Annotations.description }}
-          {{ end }}
+  - name: 'msteams-ssl'
+    webhook_configs:
+      - url: 'http://alertmanager-msteams:2000/alertmanager'
         send_resolved: true
 
-  - name: 'ecs-alerts'
-    slack_configs:
-      - channel: '#monitoring-ecs'
-        title: '🐳 ECS Alert: {{ .GroupLabels.alertname }}'
-        text: >-
-          {{ range .Alerts }}
-          *{{ .Annotations.summary }}*
-          {{ .Annotations.description }}
-          {{ end }}
+  - name: 'msteams-ecs'
+    webhook_configs:
+      - url: 'http://alertmanager-msteams:2000/alertmanager'
         send_resolved: true
 
-  - name: 'lambda-alerts'
-    slack_configs:
-      - channel: '#monitoring-lambda'
-        title: 'λ Lambda Alert: {{ .GroupLabels.alertname }}'
-        text: >-
-          {{ range .Alerts }}
-          *{{ .Annotations.summary }}*
-          {{ .Annotations.description }}
-          {{ end }}
+  - name: 'msteams-lambda'
+    webhook_configs:
+      - url: 'http://alertmanager-msteams:2000/alertmanager'
         send_resolved: true
 
-  - name: 'api-alerts'
-    slack_configs:
-      - channel: '#monitoring-api'
-        title: '🌐 API Gateway Alert: {{ .GroupLabels.alertname }}'
-        text: >-
-          {{ range .Alerts }}
-          *{{ .Annotations.summary }}*
-          {{ .Annotations.description }}
-          {{ end }}
+  - name: 'msteams-api'
+    webhook_configs:
+      - url: 'http://alertmanager-msteams:2000/alertmanager'
         send_resolved: true
 
-  - name: 'waf-alerts'
-    slack_configs:
-      - channel: '#monitoring-security'
-        title: '🛡️ WAF Alert: {{ .GroupLabels.alertname }}'
-        text: >-
-          {{ range .Alerts }}
-          *{{ .Annotations.summary }}*
-          {{ .Annotations.description }}
-          {{ end }}
+  - name: 'msteams-waf'
+    webhook_configs:
+      - url: 'http://alertmanager-msteams:2000/alertmanager'
         send_resolved: true
 
 # ─── Inhibit Rules ────────────────────────────────────────────────────

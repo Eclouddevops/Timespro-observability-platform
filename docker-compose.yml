@@ -169,6 +169,29 @@ services:
       - monitoring
 
   # ─────────────────────────────────────────────
+  # ALERTMANAGER MS TEAMS PROXY
+  # Converts Prometheus alerts → MS Teams Adaptive Cards
+  # Alertmanager webhooks → this proxy → MS Teams channel
+  # ─────────────────────────────────────────────
+  alertmanager-msteams:
+    image: bzon/prometheus-msteams:latest
+    container_name: alertmanager-msteams
+    restart: unless-stopped
+    ports:
+      - "2000:2000"
+    environment:
+      - TEAMS_INCOMING_WEBHOOK_URL=${MSTEAMS_WEBHOOK_URL}
+      - TEAMS_REQUEST_TIMEOUT=30s
+    volumes:
+      - ./alertmanager/msteams-config.yml:/etc/alertmanager-msteams/config.yml:ro
+    command:
+      - --config=/etc/alertmanager-msteams/config.yml
+    networks:
+      - monitoring
+    depends_on:
+      - alertmanager
+
+  # ─────────────────────────────────────────────
   # BLACKBOX EXPORTER (URL / SSL Monitoring)
   # ─────────────────────────────────────────────
   blackbox-exporter:
@@ -211,7 +234,7 @@ services:
       - GRAFANA_API_KEY=${GRAFANA_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      - MSTEAMS_WEBHOOK_URL=${MSTEAMS_WEBHOOK_URL:-}
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
     networks:
       - monitoring
