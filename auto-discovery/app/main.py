@@ -1,23 +1,18 @@
 """
-EC2 Auto-Discovery Agent
-────────────────────────
-Automatically detects new/removed EC2 instances and updates
-Prometheus monitoring targets without any manual intervention.
+EC2 Auto-Discovery Agent — Multi-Account / Multi-Region
+────────────────────────────────────────────────────────
+Automatically discovers ALL AWS services across ALL accounts
+and ALL regions, then updates Prometheus targets.
 
-How it works:
-  • Runs a discovery scan every DISCOVERY_INTERVAL_MINUTES (default: 2)
-  • Checks all running EC2 instances via AWS API (IAM Instance Profile)
-  • Tests if Node Exporter (port 9100) is reachable on each instance
-  • Updates /etc/prometheus/targets/ec2_nodes.yml automatically
-  • Hot-reloads Prometheus (no restart needed)
-  • Sends MS Teams notification when instances are added/removed
+Supported: EC2, ECS, Lambda, RDS, ALB, API Gateway, ASG, ElastiCache, SQS
 
-API Endpoints:
-  GET  /health          — liveness probe
-  GET  /metrics         — Prometheus self-metrics
-  GET  /instances       — list all discovered instances + status
-  POST /discover        — trigger an immediate discovery scan
-  GET  /status          — last discovery summary
+API:
+  GET  /health       — liveness
+  GET  /metrics      — Prometheus self-metrics
+  GET  /status       — last discovery summary
+  GET  /services     — all discovered services
+  GET  /accounts     — accounts being scanned
+  POST /discover     — trigger immediate scan
 """
 
 import asyncio
@@ -32,7 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATEST
 from starlette.responses import Response, JSONResponse
 
-from .ec2_discovery import EC2Discovery
+from .multi_account import MultiAccountDiscovery
 
 logging.basicConfig(
     level=logging.INFO,
@@ -43,79 +38,81 @@ logger = logging.getLogger(__name__)
 DISCOVERY_INTERVAL = int(os.getenv("DISCOVERY_INTERVAL_MINUTES", "2"))
 
 # ── Prometheus self-metrics ───────────────────────────────────────────
-instances_total     = Gauge("autodiscovery_instances_total",    "Total EC2 instances discovered")
-instances_monitored = Gauge("autodiscovery_instances_monitored","EC2 instances with Node Exporter UP")
-instances_missing   = Gauge("autodiscovery_instances_missing",  "EC2 instances without Node Exporter")
-discovery_runs      = Counter("autodiscovery_runs_total",       "Total discovery cycles run")
+services_total      = Gauge("autodiscovery_services_total",     "Total AWS services discovered", ["service_type"])
+accounts_total      = Gauge("autodiscovery_accounts_total",     "Total AWS accounts scanned")
+regions_total       = Gauge("autodiscovery_regions_total",      "Total AWS regions scanned")
+ec2_monitored       = Gauge("autodiscovery_instances_monitored","EC2 instances with Node Exporter UP")
+ec2_missing         = Gauge("autodiscovery_instances_missing",  "EC2 instances without Node Exporter")
+ec2_discovered      = Gauge("autodiscovery_instances_total",    "Total EC2 instances discovered")
+discovery_runs      = Counter("autodiscovery_runs_total",       "Total discovery cycles")
 discovery_errors    = Counter("autodiscovery_errors_total",     "Total discovery errors")
-last_discovery_ts   = Gauge("autodiscovery_last_run_timestamp", "Unix timestamp of last discovery run")
+last_discovery_ts   = Gauge("autodiscovery_last_run_timestamp", "Unix ts of last run")
 
-# ── App ───────────────────────────────────────────────────────────────
 app = FastAPI(
-    title="EC2 Auto-Discovery Agent",
-    description="Automatically discovers EC2 instances and updates Prometheus targets",
-    version="1.0.0"
+    title="AWS Multi-Account Auto-Discovery Agent",
+    description="Discovers all AWS services across all accounts and regions",
+    version="2.0.0"
 )
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"]
-)
-
-discovery  = EC2Discovery()
-scheduler  = AsyncIOScheduler()
+discovery   = MultiAccountDiscovery()
+scheduler   = AsyncIOScheduler()
 last_result: dict = {}
 
-
-# ── Discovery runner ──────────────────────────────────────────────────
 
 async def run_discovery_cycle():
     global last_result
     try:
-        logger.info("Running EC2 discovery cycle...")
-        result = await discovery.run_discovery()
+        logger.info("Starting discovery cycle...")
+        result = await discovery.run()
         last_result = result
 
-        # Update Prometheus metrics
-        instances_total.set(result["total_discovered"])
-        instances_monitored.set(result["total_monitored"])
-        instances_missing.set(result["not_reachable"])
+        # Update metrics
+        by_type = result.get("by_type", {})
+        for svc_type, count in by_type.items():
+            services_total.labels(service_type=svc_type).set(count)
+
+        accounts_total.set(result.get("accounts", 0))
+        regions_total.set(result.get("regions_scanned", 0))
+
+        ec2_count = by_type.get("ec2", 0)
+        ec2_discovered.set(ec2_count)
+
+        # Count reachable EC2s
+        reachable = sum(1 for s in discovery.discovered
+                        if s.service_type == "ec2" and s.reachable)
+        ec2_monitored.set(reachable)
+        ec2_missing.set(ec2_count - reachable)
+
         discovery_runs.inc()
         last_discovery_ts.set(datetime.utcnow().timestamp())
 
-        if result["newly_added"]:
-            logger.info("🆕 New instances added: %s", result["newly_added"])
-        if result["newly_removed"]:
-            logger.info("🗑️  Instances removed: %s", result["newly_removed"])
+        if result.get("new_services"):
+            logger.info("🆕 New: %s", [s["name"] for s in result["new_services"]])
+        if result.get("removed_services"):
+            logger.info("🗑️  Removed: %s", [s["name"] for s in result["removed_services"]])
 
     except Exception as e:
         discovery_errors.inc()
-        logger.error("Discovery cycle failed: %s", e)
+        logger.error("Discovery cycle failed: %s", e, exc_info=True)
 
-
-# ── Lifecycle ─────────────────────────────────────────────────────────
 
 @app.on_event("startup")
 async def startup():
-    # Run immediately on start
     asyncio.create_task(run_discovery_cycle())
-
-    # Then run on schedule
     scheduler.add_job(
-        run_discovery_cycle,
-        "interval",
+        run_discovery_cycle, "interval",
         minutes=DISCOVERY_INTERVAL,
-        id="ec2-discovery",
+        id="aws-discovery",
         max_instances=1,
         coalesce=True
     )
     scheduler.start()
-    logger.info("EC2 Auto-Discovery Agent started ✓")
-    logger.info("Discovery interval: every %d minutes", DISCOVERY_INTERVAL)
-    logger.info("Regions: %s", os.getenv("AWS_REGIONS", "us-east-1"))
-    logger.info("Auto-install Node Exporter: %s", os.getenv("AUTO_INSTALL_NODE_EXPORTER", "false"))
+    logger.info("=" * 60)
+    logger.info("AWS Multi-Account Auto-Discovery Agent started ✓")
+    logger.info("Interval   : every %d minutes", DISCOVERY_INTERVAL)
+    logger.info("Regions    : %s", os.getenv("AWS_REGIONS", "us-east-1"))
+    logger.info("Accounts   : %s", os.getenv("AWS_ACCOUNTS", "[] (primary only)"))
 
 
 @app.on_event("shutdown")
@@ -123,65 +120,77 @@ async def shutdown():
     scheduler.shutdown(wait=False)
 
 
-# ── Routes ────────────────────────────────────────────────────────────
-
 @app.get("/health")
 async def health():
     return {
         "status": "ok",
         "timestamp": datetime.utcnow().isoformat(),
-        "discovery_interval_minutes": DISCOVERY_INTERVAL,
-        "regions": os.getenv("AWS_REGIONS", "us-east-1"),
-        "total_monitored": last_result.get("total_monitored", 0)
+        "interval_minutes": DISCOVERY_INTERVAL,
+        "accounts": last_result.get("accounts", 0),
+        "total_services": last_result.get("total", 0),
     }
 
 
 @app.get("/metrics")
 async def metrics():
-    """Prometheus scrape endpoint."""
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.post("/discover")
 async def trigger_discovery():
-    """Trigger an immediate discovery scan."""
-    logger.info("Manual discovery triggered via API")
     asyncio.create_task(run_discovery_cycle())
-    return {
-        "message": "Discovery triggered",
-        "timestamp": datetime.utcnow().isoformat()
-    }
+    return {"message": "Discovery triggered", "timestamp": datetime.utcnow().isoformat()}
 
 
 @app.get("/status")
 async def status():
-    """Return the last discovery summary."""
-    return last_result or {
-        "message": "No discovery run yet — running now",
-        "timestamp": datetime.utcnow().isoformat()
-    }
+    return last_result or {"message": "No discovery run yet", "timestamp": datetime.utcnow().isoformat()}
 
 
-@app.get("/instances")
-async def list_instances():
-    """List all discovered EC2 instances with their monitoring status."""
-    instances = last_result.get("instances", [])
+@app.get("/accounts")
+async def list_accounts():
     return {
-        "total":     len(instances),
-        "monitored": sum(1 for i in instances if i.get("node_exporter")),
-        "missing":   sum(1 for i in instances if not i.get("node_exporter")),
-        "instances": instances,
-        "last_scan": datetime.utcfromtimestamp(
-            last_discovery_ts._value.get() or 0
-        ).isoformat() if instances else None
+        "accounts": [
+            {"id": a.account_id, "name": a.account_name, "regions": a.regions}
+            for a in discovery.accounts
+        ]
     }
 
 
-@app.get("/instances/{instance_id}")
-async def get_instance(instance_id: str):
-    """Get details for a specific EC2 instance."""
-    instances = last_result.get("instances", [])
-    for inst in instances:
-        if inst["id"] == instance_id or inst["name"] == instance_id:
-            return inst
-    return JSONResponse(status_code=404, content={"error": f"Instance {instance_id} not found"})
+@app.get("/services")
+async def list_services(service_type: str = None, account: str = None, region: str = None):
+    svcs = discovery.discovered
+    if service_type:
+        svcs = [s for s in svcs if s.service_type == service_type]
+    if account:
+        svcs = [s for s in svcs if s.account_name == account or s.account_id == account]
+    if region:
+        svcs = [s for s in svcs if s.region == region]
+
+    return {
+        "total": len(svcs),
+        "services": [
+            {
+                "account":      s.account_name,
+                "account_id":   s.account_id,
+                "region":       s.region,
+                "type":         s.service_type,
+                "id":           s.resource_id,
+                "name":         s.resource_name,
+                "reachable":    s.reachable,
+                "metadata":     s.metadata,
+                "tags":         s.tags,
+            }
+            for s in svcs
+        ]
+    }
+
+
+@app.get("/services/{service_type}")
+async def get_services_by_type(service_type: str):
+    svcs = [s for s in discovery.discovered if s.service_type == service_type]
+    return {"type": service_type, "total": len(svcs), "services": [
+        {"account": s.account_name, "region": s.region, "id": s.resource_id,
+         "name": s.resource_name, "metadata": s.metadata}
+        for s in svcs
+    ]}
