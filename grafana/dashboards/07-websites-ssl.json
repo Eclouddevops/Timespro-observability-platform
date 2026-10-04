@@ -1,0 +1,559 @@
+{
+  "uid": "websites-ssl-monitor",
+  "title": "🌐 Website & SSL Monitoring",
+  "description": "Uptime, response time and SSL certificate expiry for all monitored websites",
+  "tags": ["websites", "ssl", "uptime", "blackbox"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "1m",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "label": "Datasource",
+        "hide": 0
+      },
+      {
+        "name": "target",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(probe_success{job=\"blackbox-http\"}, instance)",
+        "label": "Website",
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+
+    {
+      "id": 1,
+      "type": "row",
+      "title": "🚦 Live Status",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+
+    {
+      "id": 2,
+      "title": "Sites UP",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red",   "value": 0 },
+            { "color": "green", "value": 1 }
+          ]},
+          "noValue": "0"
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none", "textMode": "auto" },
+      "targets": [{
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "count(probe_success{job=\"blackbox-http\"} == 1) or vector(0)",
+        "legendFormat": "UP"
+      }]
+    },
+
+    {
+      "id": 3,
+      "title": "Sites DOWN",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": 0 },
+            { "color": "red",   "value": 1 }
+          ]},
+          "noValue": "0"
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [{
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "count(probe_success{job=\"blackbox-http\"} == 0) or vector(0)",
+        "legendFormat": "DOWN"
+      }]
+    },
+
+    {
+      "id": 4,
+      "title": "Avg Response Time",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green",  "value": 0 },
+            { "color": "yellow", "value": 1 },
+            { "color": "red",    "value": 3 }
+          ]}
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
+      "targets": [{
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "avg(probe_duration_seconds{job=\"blackbox-http\",instance=~\"$target\"})",
+        "legendFormat": "Avg Response"
+      }]
+    },
+
+    {
+      "id": 5,
+      "title": "SSL Certs Expiring < 30d",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green",  "value": 0 },
+            { "color": "yellow", "value": 1 },
+            { "color": "red",    "value": 3 }
+          ]},
+          "noValue": "0"
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [{
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "count((ssl_cert_not_after - time()) / 86400 < 30) or vector(0)",
+        "legendFormat": "Expiring"
+      }]
+    },
+
+    {
+      "id": 6,
+      "title": "SSL Certs Expiring < 7d",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": 0 },
+            { "color": "red",   "value": 1 }
+          ]},
+          "noValue": "0"
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [{
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "count((ssl_cert_not_after - time()) / 86400 < 7) or vector(0)",
+        "legendFormat": "Critical"
+      }]
+    },
+
+    {
+      "id": 7,
+      "title": "Overall Uptime (24h)",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0, "max": 100,
+          "decimals": 2,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red",    "value": 0 },
+            { "color": "yellow", "value": 95 },
+            { "color": "green",  "value": 99 }
+          ]}
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [{
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "avg(avg_over_time(probe_success{job=\"blackbox-http\",instance=~\"$target\"}[24h])) * 100",
+        "legendFormat": "24h Uptime"
+      }]
+    },
+
+    {
+      "id": 10,
+      "type": "row",
+      "title": "📋 Website Status Table",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "collapsed": false
+    },
+
+    {
+      "id": 11,
+      "title": "All Websites — Status, Response Time, SSL, HTTP Code",
+      "type": "table",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 6 },
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "Status", "desc": false }],
+        "cellHeight": "md",
+        "footer": { "show": false }
+      },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "left" } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Status" },
+            "properties": [
+              { "id": "custom.width", "value": 110 },
+              { "id": "custom.displayMode", "value": "color-background" },
+              { "id": "mappings", "value": [{
+                "type": "value",
+                "options": {
+                  "1": { "text": "🟢  UP",   "color": "green", "index": 0 },
+                  "0": { "text": "🔴  DOWN", "color": "red",   "index": 1 }
+                }
+              }]}
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Response Time (s)" },
+            "properties": [
+              { "id": "unit", "value": "s" },
+              { "id": "decimals", "value": 3 },
+              { "id": "custom.width", "value": 150 },
+              { "id": "custom.displayMode", "value": "color-background" },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "green",  "value": 0 },
+                { "color": "yellow", "value": 1 },
+                { "color": "red",    "value": 3 }
+              ]}}
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "SSL Days Left" },
+            "properties": [
+              { "id": "unit", "value": "short" },
+              { "id": "custom.width", "value": 130 },
+              { "id": "custom.displayMode", "value": "color-background" },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "red",    "value": 0  },
+                { "color": "orange", "value": 7  },
+                { "color": "yellow", "value": 30 },
+                { "color": "green",  "value": 60 }
+              ]}}
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "HTTP Code" },
+            "properties": [
+              { "id": "custom.width", "value": 110 },
+              { "id": "custom.displayMode", "value": "color-background" },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "green",  "value": 200 },
+                { "color": "yellow", "value": 300 },
+                { "color": "orange", "value": 400 },
+                { "color": "red",    "value": 500 }
+              ]}}
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Uptime 24h %" },
+            "properties": [
+              { "id": "unit", "value": "percent" },
+              { "id": "decimals", "value": 2 },
+              { "id": "custom.width", "value": 130 },
+              { "id": "custom.displayMode", "value": "color-background" },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "red",    "value": 0  },
+                { "color": "yellow", "value": 95 },
+                { "color": "green",  "value": 99 }
+              ]}}
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "probe_success{job=\"blackbox-http\",instance=~\"$target\"}",
+          "instant": true, "format": "table", "legendFormat": ""
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "probe_duration_seconds{job=\"blackbox-http\",instance=~\"$target\"}",
+          "instant": true, "format": "table", "legendFormat": ""
+        },
+        {
+          "refId": "C",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "probe_http_status_code{job=\"blackbox-http\",instance=~\"$target\"}",
+          "instant": true, "format": "table", "legendFormat": ""
+        },
+        {
+          "refId": "D",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "avg_over_time(probe_success{job=\"blackbox-http\",instance=~\"$target\"}[24h]) * 100",
+          "instant": true, "format": "table", "legendFormat": ""
+        },
+        {
+          "refId": "E",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "floor((ssl_cert_not_after{instance=~\"$target\"} - time()) / 86400)",
+          "instant": true, "format": "table", "legendFormat": ""
+        }
+      ],
+      "transformations": [
+        { "id": "merge", "options": {} },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "instance":   "Website",
+              "Value #A":   "Status",
+              "Value #B":   "Response Time (s)",
+              "Value #C":   "HTTP Code",
+              "Value #D":   "Uptime 24h %",
+              "Value #E":   "SSL Days Left"
+            },
+            "indexByName": {
+              "Website": 0, "Status": 1, "HTTP Code": 2,
+              "Response Time (s)": 3, "Uptime 24h %": 4, "SSL Days Left": 5
+            }
+          }
+        }
+      ]
+    },
+
+    {
+      "id": 20,
+      "type": "row",
+      "title": "📈 Response Time History",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
+      "collapsed": false
+    },
+
+    {
+      "id": 21,
+      "title": "Response Time Over Time",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 17 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 8 },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": 0 },
+            { "color": "yellow", "value": 1 },
+            { "color": "red", "value": 3 }
+          ]}
+        }
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max", "lastNotNull"] }
+      },
+      "targets": [{
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "probe_duration_seconds{job=\"blackbox-http\",instance=~\"$target\"}",
+        "legendFormat": "{{ instance }}"
+      }]
+    },
+
+    {
+      "id": 22,
+      "title": "Uptime % (7 days)",
+      "type": "bargauge",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 17 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 90, "max": 100,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red",    "value": 0  },
+            { "color": "yellow", "value": 95 },
+            { "color": "green",  "value": 99 }
+          ]}
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "displayMode": "gradient",
+        "showUnfilled": true
+      },
+      "targets": [{
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "avg_over_time(probe_success{job=\"blackbox-http\",instance=~\"$target\"}[7d]) * 100",
+        "legendFormat": "{{ instance }}"
+      }]
+    },
+
+    {
+      "id": 30,
+      "type": "row",
+      "title": "🔐 SSL Certificate Expiry",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 25 },
+      "collapsed": false
+    },
+
+    {
+      "id": 31,
+      "title": "SSL Certificate Expiry — Days Remaining",
+      "type": "bargauge",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "displayName": "${__field.labels.instance}",
+          "min": 0, "max": 365,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red",    "value": 0  },
+            { "color": "orange", "value": 7  },
+            { "color": "yellow", "value": 30 },
+            { "color": "green",  "value": 60 }
+          ]}
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "text": {}
+      },
+      "targets": [{
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "floor((ssl_cert_not_after - time()) / 86400)",
+        "legendFormat": "{{ instance }}"
+      }]
+    },
+
+    {
+      "id": 32,
+      "title": "SSL Expiry Timeline",
+      "type": "table",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "Days Left", "desc": false }]
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Days Left" },
+            "properties": [
+              { "id": "custom.width", "value": 120 },
+              { "id": "custom.displayMode", "value": "color-background" },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "red",    "value": 0  },
+                { "color": "orange", "value": 7  },
+                { "color": "yellow", "value": 30 },
+                { "color": "green",  "value": 60 }
+              ]}}
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Expiry Date" },
+            "properties": [
+              { "id": "unit", "value": "dateTimeAsIso" },
+              { "id": "custom.width", "value": 200 }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "floor((ssl_cert_not_after - time()) / 86400)",
+          "instant": true, "format": "table", "legendFormat": ""
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "ssl_cert_not_after * 1000",
+          "instant": true, "format": "table", "legendFormat": ""
+        }
+      ],
+      "transformations": [
+        { "id": "merge", "options": {} },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "instance": "Domain",
+              "Value #A": "Days Left",
+              "Value #B": "Expiry Date"
+            }
+          }
+        }
+      ]
+    },
+
+    {
+      "id": 40,
+      "type": "row",
+      "title": "📡 Uptime History",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 34 },
+      "collapsed": false
+    },
+
+    {
+      "id": 41,
+      "title": "Uptime State (1 = UP, 0 = DOWN)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 35 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0, "max": 1,
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter"
+          },
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+          ]
+        }
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] }
+      },
+      "targets": [{
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "probe_success{job=\"blackbox-http\",instance=~\"$target\"}",
+        "legendFormat": "{{ instance }}"
+      }]
+    }
+  ]
+}

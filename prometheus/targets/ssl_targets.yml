@@ -1,14 +1,39 @@
-# ── SSL Certificate Expiry Monitoring ─────────────────────────────
-# These domains are checked by the SSL Exporter for certificate expiry.
-# Alerts fire at 30 days and 7 days before expiry.
-# ─────────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════
+# SSL Certificate Expiry Monitoring
+# Checked by SSL Exporter every 5 minutes
+# Alerts: WARNING at 30 days, CRITICAL at 7 days before expiry
+# ══════════════════════════════════════════════════════════════════════
 
+# ── Main Website SSL ───────────────────────────────────────────────────
 - targets:
-    - 'example.com:443'
-    # - 'api.example.com:443'
-    # - 'app.example.com:443'
-    # - '*.example.com:443'    # Wildcard cert - check via a known subdomain
-    # - 'www.example.com:443'
+    - 'aiobz.com:443'
+    - 'www.aiobz.com:443'
   labels:
     env: production
     service: ssl
+    category: main
+    owner: eclouddevops
+
+# ── E-Commerce SSL ─────────────────────────────────────────────────────
+# - targets:
+#     - 'shop.eclouddevops.com:443'
+#   labels:
+#     env: production
+#     service: ssl
+#     category: ecommerce
+
+# ── Car Parking SSL ────────────────────────────────────────────────────
+# - targets:
+#     - 'parking.eclouddevops.com:443'
+#   labels:
+#     env: production
+#     service: ssl
+#     category: car-parking
+
+# ── Mobile Sale SSL ────────────────────────────────────────────────────
+# - targets:
+#     - 'mobiles.eclouddevops.com:443'
+#   labels:
+#     env: production
+#     service: ssl
+#     category: mobile-sale
