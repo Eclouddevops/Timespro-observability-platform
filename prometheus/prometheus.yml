@@ -1,0 +1,119 @@
+global:
+  scrape_interval: 60s
+  evaluation_interval: 60s
+  external_labels:
+    monitor: 'observability-platform'
+    environment: '${ENVIRONMENT:-production}'
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+# ═══════════════════════════════════════════════════════
+# SCRAPE CONFIGS
+# ═══════════════════════════════════════════════════════
+scrape_configs:
+
+  # ── Prometheus Self Monitoring ──────────────────────
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: prometheus
+          env: '${ENVIRONMENT:-production}'
+
+  # ── Node Exporter (EC2 Host) ─────────────────────────
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          instance: 'observability-server'
+          service: 'node-exporter'
+          env: '${ENVIRONMENT:-production}'
+    # File-based service discovery for additional EC2 nodes
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/ec2_nodes.yml
+        refresh_interval: 30s
+
+  # ── cAdvisor (Container Metrics) ─────────────────────
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+        labels:
+          service: 'cadvisor'
+
+  # ── AWS CloudWatch (ECS/EC2/Lambda/API GW/WAF) ───────
+  - job_name: 'cloudwatch'
+    static_configs:
+      - targets: ['cloudwatch-exporter:9106']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __address__
+
+  # ── Blackbox Exporter (HTTP/HTTPS endpoints) ─────────
+  - job_name: 'blackbox-http'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/websites.yml
+        refresh_interval: 30s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  # ── SSL Certificate Expiry ────────────────────────────
+  - job_name: 'ssl-certificates'
+    metrics_path: /probe
+    params:
+      module: [tcp]
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/ssl_targets.yml
+        refresh_interval: 5m
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: ssl-exporter:9219
+
+  # ── Blackbox ICMP Ping ────────────────────────────────
+  - job_name: 'blackbox-ping'
+    metrics_path: /probe
+    params:
+      module: [icmp]
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/ping_targets.yml
+        refresh_interval: 30s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  # ── Grafana ───────────────────────────────────────────
+  - job_name: 'grafana'
+    static_configs:
+      - targets: ['grafana:3000']
+
+  # ── AI Observability Agent ────────────────────────────
+  - job_name: 'ai-agent'
+    static_configs:
+      - targets: ['ai-agent:8888']
+        labels:
+          service: 'ai-observability-agent'

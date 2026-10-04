@@ -1,0 +1,281 @@
+{
+  "uid": "aws-overview",
+  "title": "🌐 AWS Infrastructure Overview",
+  "description": "Multi-account AWS infrastructure overview — EC2, ECS, Lambda, API Gateway, SSL, WAF",
+  "tags": ["overview", "aws", "infrastructure"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "1m",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "label": "Datasource",
+        "hide": 0
+      },
+      {
+        "name": "environment",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(up, env)",
+        "label": "Environment",
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      },
+      {
+        "name": "region",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(up, region)",
+        "label": "AWS Region",
+        "hide": 0,
+        "multi": true,
+        "includeAll": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "🔴 Active Alerts",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "id": 2,
+      "title": "🚨 Firing Alerts",
+      "type": "alertlist",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 1 },
+      "options": {
+        "alertInstanceLabelFilter": "",
+        "alertName": "",
+        "dashboardAlerts": false,
+        "groupBy": ["alertname", "severity"],
+        "groupMode": "tags",
+        "maxItems": 20,
+        "nameFilter": "",
+        "showResolvedFor": "5m",
+        "sortOrder": 1,
+        "stateFilter": { "error": true, "firing": true, "noData": false, "normal": false, "pending": true }
+      }
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "📊 Health Summary",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 },
+      "collapsed": false
+    },
+    {
+      "id": 11,
+      "title": "Services Up",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{"color": "red","value": 0}, {"color": "yellow","value": 1}, {"color": "green","value": 5}] },
+          "unit": "short"
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "count(up == 1)", "legendFormat": "Services Up" }]
+    },
+    {
+      "id": 12,
+      "title": "Services Down",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{"color": "green","value": 0}, {"color": "yellow","value": 1}, {"color": "red","value": 2}] },
+          "unit": "short"
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "count(up == 0) or vector(0)", "legendFormat": "Services Down" }]
+    },
+    {
+      "id": 13,
+      "title": "SSL Certs Expiring < 30d",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{"color": "green","value": 0}, {"color": "yellow","value": 1}, {"color": "red","value": 3}] },
+          "unit": "short"
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "count((ssl_cert_not_after - time()) < 86400 * 30) or vector(0)", "legendFormat": "Expiring Certs" }]
+    },
+    {
+      "id": 14,
+      "title": "Websites Reachable",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{"color": "red","value": 0}, {"color": "yellow","value": 1}, {"color": "green","value": 5}] },
+          "unit": "short"
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "count(probe_success{job=\"blackbox-http\"} == 1) or vector(0)", "legendFormat": "Reachable" }]
+    },
+    {
+      "id": 15,
+      "title": "Websites DOWN",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{"color": "green","value": 0}, {"color": "yellow","value": 1}, {"color": "red","value": 2}] },
+          "unit": "short"
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "count(probe_success{job=\"blackbox-http\"} == 0) or vector(0)", "legendFormat": "Down" }]
+    },
+    {
+      "id": 16,
+      "title": "Active Firing Alerts",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{"color": "green","value": 0}, {"color": "yellow","value": 1}, {"color": "red","value": 5}] },
+          "unit": "short"
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "count(ALERTS{alertstate=\"firing\"}) or vector(0)", "legendFormat": "Firing" }]
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "🖥️ EC2 Instances",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 12 },
+      "collapsed": false
+    },
+    {
+      "id": 21,
+      "title": "EC2 CPU Utilization",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "min": 0, "max": 100, "color": { "mode": "palette-classic" } },
+        "overrides": []
+      },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "100 - (avg by(instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)", "legendFormat": "{{ instance }}" }
+      ]
+    },
+    {
+      "id": 22,
+      "title": "EC2 Memory Usage",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "min": 0, "max": 100, "color": { "mode": "palette-classic" } }
+      },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100", "legendFormat": "{{ instance }}" }
+      ]
+    },
+    {
+      "id": 30,
+      "type": "row",
+      "title": "🌐 Website & URL Monitoring",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 21 },
+      "collapsed": false
+    },
+    {
+      "id": 31,
+      "title": "URL Status",
+      "type": "table",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "fieldConfig": {
+        "defaults": { "custom": { "displayMode": "color-background" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "probe_success" }, "properties": [{ "id": "custom.displayMode", "value": "color-background" }, { "id": "mappings", "value": [{"options": {"0": {"color": "red","index": 0,"text": "DOWN"},"1": {"color": "green","index": 1,"text": "UP"}},"type": "value"}]}] },
+          { "matcher": { "id": "byName", "options": "probe_duration_seconds" }, "properties": [{ "id": "unit", "value": "s" }] }
+        ]
+      },
+      "options": { "sortBy": [{ "displayName": "probe_success", "desc": true }] },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "probe_success{job=\"blackbox-http\"}", "legendFormat": "", "instant": true, "format": "table" },
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "probe_duration_seconds{job=\"blackbox-http\"}", "legendFormat": "", "instant": true, "format": "table" }
+      ],
+      "transformations": [
+        { "id": "merge", "options": {} },
+        { "id": "organize", "options": { "renameByName": { "instance": "URL", "probe_success": "Status", "probe_duration_seconds": "Response Time" } } }
+      ]
+    },
+    {
+      "id": 32,
+      "title": "Response Time",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
+      "fieldConfig": { "defaults": { "unit": "s", "color": { "mode": "palette-classic" } } },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "probe_duration_seconds{job=\"blackbox-http\"}", "legendFormat": "{{ instance }}" }
+      ]
+    },
+    {
+      "id": 40,
+      "type": "row",
+      "title": "🔐 SSL Certificate Expiry",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 },
+      "collapsed": false
+    },
+    {
+      "id": 41,
+      "title": "SSL Certificate Expiry (Days Remaining)",
+      "type": "table",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 31 },
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Days Remaining" }, "properties": [
+            { "id": "custom.displayMode", "value": "color-background" },
+            { "id": "thresholds", "value": { "mode": "absolute", "steps": [{"color": "red","value": 0}, {"color": "orange","value": 7}, {"color": "yellow","value": 30}, {"color": "green","value": 60}] } }
+          ]}
+        ]
+      },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "(ssl_cert_not_after - time()) / 86400", "legendFormat": "{{ instance }}", "instant": true, "format": "table" }
+      ],
+      "transformations": [
+        { "id": "organize", "options": { "renameByName": { "instance": "Domain", "Value": "Days Remaining" } } }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,146 @@
+name: Deploy Observability Platform
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'production'
+        type: choice
+        options: [production, staging]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/ai-agent
+
+jobs:
+  # ── Validate configs ──────────────────────────────────────────────
+  validate:
+    name: Validate Configs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate docker-compose
+        run: docker compose config --quiet
+
+      - name: Validate Prometheus rules
+        uses: docker://prom/prometheus:v2.51.0
+        with:
+          args: >
+            promtool check rules
+            /github/workspace/prometheus/rules/node_alerts.yml
+            /github/workspace/prometheus/rules/aws_alerts.yml
+
+      - name: Validate Prometheus config
+        uses: docker://prom/prometheus:v2.51.0
+        with:
+          args: promtool check config /github/workspace/prometheus/prometheus.yml
+
+      - name: Validate Alertmanager config
+        uses: docker://prom/alertmanager:v0.27.0
+        with:
+          args: amtool check-config /github/workspace/alertmanager/alertmanager.yml
+
+      - name: Validate Grafana dashboards JSON
+        run: |
+          for f in grafana/dashboards/*.json; do
+            echo "Validating $f..."
+            python3 -c "import json,sys; json.load(open('$f'))" || { echo "INVALID: $f"; exit 1; }
+          done
+          echo "All dashboards valid ✓"
+
+  # ── Build AI Agent Docker image ───────────────────────────────────
+  build:
+    name: Build AI Agent Image
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tags }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./ai-agent
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Deploy to EC2 ─────────────────────────────────────────────────
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          timeout: 300s
+          script: |
+            set -euo pipefail
+            cd ~/observability-platform
+
+            echo "Pulling latest changes..."
+            git fetch origin main
+            git reset --hard origin/main
+
+            echo "Updating Docker images..."
+            docker compose pull
+
+            echo "Restarting stack..."
+            docker compose up -d --remove-orphans
+
+            echo "Reloading Prometheus config..."
+            sleep 5
+            curl -sf -XPOST http://localhost:9090/-/reload || true
+
+            echo "Deployment complete ✓"
+            docker compose ps
+
+      - name: Notify Slack
+        if: always()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "${{ job.status == 'success' && '✅' || '❌' }} *Deployment ${{ job.status }}*: Observability Platform\nBranch: `${{ github.ref_name }}`\nCommit: `${{ github.sha }}`\nBy: ${{ github.actor }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

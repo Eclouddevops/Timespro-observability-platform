@@ -1,0 +1,14 @@
+# ── SSL Certificate Expiry Monitoring ─────────────────────────────
+# These domains are checked by the SSL Exporter for certificate expiry.
+# Alerts fire at 30 days and 7 days before expiry.
+# ─────────────────────────────────────────────────────────────────────
+
+- targets:
+    - 'example.com:443'
+    # - 'api.example.com:443'
+    # - 'app.example.com:443'
+    # - '*.example.com:443'    # Wildcard cert - check via a known subdomain
+    # - 'www.example.com:443'
+  labels:
+    env: production
+    service: ssl

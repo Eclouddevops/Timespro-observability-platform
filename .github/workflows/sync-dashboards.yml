@@ -1,0 +1,31 @@
+name: Sync Grafana Dashboards
+
+on:
+  push:
+    paths:
+      - 'grafana/dashboards/**'
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  sync:
+    name: Push dashboards to Grafana
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Push dashboards via Grafana API
+        env:
+          GRAFANA_URL: ${{ secrets.GRAFANA_URL }}
+          GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
+        run: |
+          for dashboard in grafana/dashboards/*.json; do
+            echo "Uploading $dashboard..."
+            curl -sf \
+              -H "Authorization: Bearer $GRAFANA_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "{\"dashboard\": $(cat $dashboard), \"overwrite\": true, \"folderId\": 0}" \
+              "$GRAFANA_URL/api/dashboards/db" \
+              && echo " ✓ $(basename $dashboard)" \
+              || echo " ✗ FAILED: $(basename $dashboard)"
+          done

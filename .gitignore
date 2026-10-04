@@ -1,0 +1,28 @@
+# Secrets — NEVER commit
+.env
+*.pem
+*.key
+nginx/ssl/
+
+# Backups
+backups/
+
+# Prometheus data (managed by Docker volumes)
+prometheus_data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp

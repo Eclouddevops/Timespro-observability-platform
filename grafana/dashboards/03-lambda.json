@@ -1,0 +1,101 @@
+{
+  "uid": "aws-lambda",
+  "title": "λ Lambda Functions",
+  "tags": ["lambda", "aws", "serverless"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "refresh": "1m",
+  "time": { "from": "now-3h", "to": "now" },
+  "templating": {
+    "list": [
+      { "name": "datasource", "type": "datasource", "query": "prometheus" },
+      {
+        "name": "function_name",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(aws_lambda_invocations_sum, function_name)",
+        "label": "Function",
+        "multi": true,
+        "includeAll": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Total Invocations",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "blue" } } },
+      "options": { "reduceOptions": { "calcs": ["sum"] }, "colorMode": "background" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(increase(aws_lambda_invocations_sum{function_name=~\"$function_name\"}[1h]))", "legendFormat": "Invocations/hr" }]
+    },
+    {
+      "id": 2, "type": "stat", "title": "Error Rate",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "thresholds": { "mode": "absolute", "steps": [{"color": "green","value": 0}, {"color": "yellow","value": 1}, {"color": "red","value": 5}] }, "color": { "mode": "thresholds" } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(rate(aws_lambda_errors_sum{function_name=~\"$function_name\"}[5m])) / sum(rate(aws_lambda_invocations_sum{function_name=~\"$function_name\"}[5m])) * 100", "legendFormat": "Error %" }]
+    },
+    {
+      "id": 3, "type": "stat", "title": "Avg Duration",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "ms", "thresholds": { "mode": "absolute", "steps": [{"color": "green","value": 0}, {"color": "yellow","value": 3000}, {"color": "red","value": 10000}] }, "color": { "mode": "thresholds" } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "avg(aws_lambda_duration_average{function_name=~\"$function_name\"})", "legendFormat": "Avg Duration" }]
+    },
+    {
+      "id": 4, "type": "stat", "title": "Throttles",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{"color": "green","value": 0}, {"color": "yellow","value": 1}, {"color": "red","value": 10}] }, "color": { "mode": "thresholds" } } },
+      "options": { "reduceOptions": { "calcs": ["sum"] }, "colorMode": "background" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(increase(aws_lambda_throttles_sum{function_name=~\"$function_name\"}[1h]))", "legendFormat": "Throttles/hr" }]
+    },
+    {
+      "id": 5, "type": "stat", "title": "Concurrent Executions",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "purple" } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(aws_lambda_concurrent_executions_maximum{function_name=~\"$function_name\"})", "legendFormat": "Concurrent" }]
+    },
+    {
+      "id": 6, "type": "stat", "title": "p99 Duration",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "ms", "thresholds": { "mode": "absolute", "steps": [{"color": "green","value": 0}, {"color": "yellow","value": 5000}, {"color": "red","value": 15000}] }, "color": { "mode": "thresholds" } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "max(aws_lambda_duration_p99{function_name=~\"$function_name\"})", "legendFormat": "p99" }]
+    },
+    {
+      "id": 10, "type": "timeseries", "title": "Invocations per Function",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "color": { "mode": "palette-classic" } } },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "rate(aws_lambda_invocations_sum{function_name=~\"$function_name\"}[5m])", "legendFormat": "{{ function_name }}" }]
+    },
+    {
+      "id": 11, "type": "timeseries", "title": "Error Rate per Function",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "color": { "mode": "palette-classic" } } },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "rate(aws_lambda_errors_sum{function_name=~\"$function_name\"}[5m]) / rate(aws_lambda_invocations_sum{function_name=~\"$function_name\"}[5m]) * 100", "legendFormat": "{{ function_name }}" }]
+    },
+    {
+      "id": 12, "type": "timeseries", "title": "Duration (Avg, Max, p99)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "ms", "color": { "mode": "palette-classic" } } },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "aws_lambda_duration_average{function_name=~\"$function_name\"}", "legendFormat": "Avg {{ function_name }}" },
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "aws_lambda_duration_maximum{function_name=~\"$function_name\"}", "legendFormat": "Max {{ function_name }}" },
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "aws_lambda_duration_p99{function_name=~\"$function_name\"}", "legendFormat": "p99 {{ function_name }}" }
+      ]
+    }
+  ]
+}

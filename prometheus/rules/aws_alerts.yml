@@ -1,0 +1,195 @@
+groups:
+  # ── SSL Certificate Expiry ──────────────────────────────────────────
+  - name: ssl_alerts
+    rules:
+      - alert: SSLCertExpiringSoon
+        expr: ssl_cert_not_after - time() < 86400 * 30
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "SSL cert expiring in < 30 days: {{ $labels.instance }}"
+          description: "Certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
+
+      - alert: SSLCertExpiringCritical
+        expr: ssl_cert_not_after - time() < 86400 * 7
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: "CRITICAL: SSL cert expiring in < 7 days: {{ $labels.instance }}"
+          description: "Certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
+
+      - alert: SSLCertExpired
+        expr: ssl_cert_not_after - time() < 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SSL cert EXPIRED: {{ $labels.instance }}"
+          description: "Certificate for {{ $labels.instance }} has expired!"
+
+  # ── Website / URL Monitoring ────────────────────────────────────────
+  - name: blackbox_alerts
+    rules:
+      - alert: WebsiteDown
+        expr: probe_success == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Website DOWN: {{ $labels.instance }}"
+          description: "{{ $labels.instance }} has been unreachable for 2 minutes"
+
+      - alert: SlowWebsiteResponse
+        expr: probe_duration_seconds > 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow response: {{ $labels.instance }}"
+          description: "Response time is {{ $value | printf \"%.2f\" }}s for {{ $labels.instance }}"
+
+      - alert: SSLProbeFailed
+        expr: probe_ssl_earliest_cert_expiry - time() < 86400 * 30
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "SSL probe expiry warning: {{ $labels.instance }}"
+          description: "TLS cert for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
+
+  # ── ECS Alerts ──────────────────────────────────────────────────────
+  - name: ecs_alerts
+    rules:
+      - alert: ECSServiceHighCPU
+        expr: aws_ecs_cpuutilization_average > 80
+        for: 5m
+        labels:
+          severity: warning
+          service_type: ecs
+        annotations:
+          summary: "ECS service high CPU: {{ $labels.service_name }}"
+          description: "ECS service {{ $labels.service_name }} CPU at {{ $value | printf \"%.1f\" }}%"
+
+      - alert: ECSServiceHighMemory
+        expr: aws_ecs_memory_utilization_average > 80
+        for: 5m
+        labels:
+          severity: warning
+          service_type: ecs
+        annotations:
+          summary: "ECS service high memory: {{ $labels.service_name }}"
+          description: "ECS service {{ $labels.service_name }} memory at {{ $value | printf \"%.1f\" }}%"
+
+      - alert: ECSTaskStopped
+        expr: aws_ecs_running_task_count_average < 1
+        for: 2m
+        labels:
+          severity: critical
+          service_type: ecs
+        annotations:
+          summary: "ECS service has no running tasks: {{ $labels.service_name }}"
+          description: "ECS service {{ $labels.service_name }} has {{ $value }} running tasks"
+
+  # ── Lambda Alerts ────────────────────────────────────────────────────
+  - name: lambda_alerts
+    rules:
+      - alert: LambdaHighErrorRate
+        expr: rate(aws_lambda_errors_sum[5m]) / rate(aws_lambda_invocations_sum[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service_type: lambda
+        annotations:
+          summary: "Lambda high error rate: {{ $labels.function_name }}"
+          description: "Error rate is {{ $value | printf \"%.2f\" }}% for {{ $labels.function_name }}"
+
+      - alert: LambdaThrottling
+        expr: rate(aws_lambda_throttles_sum[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          service_type: lambda
+        annotations:
+          summary: "Lambda throttling: {{ $labels.function_name }}"
+          description: "{{ $labels.function_name }} is being throttled ({{ $value | printf \"%.0f\" }}/s)"
+
+      - alert: LambdaHighDuration
+        expr: aws_lambda_duration_p99 > 10000
+        for: 5m
+        labels:
+          severity: warning
+          service_type: lambda
+        annotations:
+          summary: "Lambda slow execution: {{ $labels.function_name }}"
+          description: "p99 duration is {{ $value }}ms for {{ $labels.function_name }}"
+
+  # ── API Gateway Alerts ───────────────────────────────────────────────
+  - name: api_gateway_alerts
+    rules:
+      - alert: APIGatewayHighError4xx
+        expr: rate(aws_apigateway_4xxerror_sum[5m]) / rate(aws_apigateway_count_sum[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service_type: api-gateway
+        annotations:
+          summary: "API Gateway 4xx error rate: {{ $labels.api_name }}"
+          description: "4xx error rate is {{ $value | printf \"%.2f\" }}% for {{ $labels.api_name }}"
+
+      - alert: APIGatewayHighError5xx
+        expr: rate(aws_apigateway_5xxerror_sum[5m]) / rate(aws_apigateway_count_sum[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+          service_type: api-gateway
+        annotations:
+          summary: "API Gateway 5xx error rate: {{ $labels.api_name }}"
+          description: "5xx error rate is {{ $value | printf \"%.2f\" }}% for {{ $labels.api_name }}"
+
+      - alert: APIGatewayHighLatency
+        expr: aws_apigateway_latency_p99 > 5000
+        for: 5m
+        labels:
+          severity: warning
+          service_type: api-gateway
+        annotations:
+          summary: "API Gateway high latency: {{ $labels.api_name }}"
+          description: "p99 latency is {{ $value }}ms for {{ $labels.api_name }}"
+
+  # ── EC2 ASG Alerts ────────────────────────────────────────────────────
+  - name: asg_alerts
+    rules:
+      - alert: ASGCapacityLow
+        expr: aws_autoscaling_group_in_service_instances_average < aws_autoscaling_group_desired_capacity_average * 0.5
+        for: 5m
+        labels:
+          severity: critical
+          service_type: asg
+        annotations:
+          summary: "ASG capacity below 50%: {{ $labels.auto_scaling_group_name }}"
+          description: "Only {{ $value }} of desired instances are in service"
+
+  # ── WAF Alerts ────────────────────────────────────────────────────────
+  - name: waf_alerts
+    rules:
+      - alert: WAFHighBlockedRequests
+        expr: rate(aws_wafv2_blocked_requests_sum[5m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+          service_type: waf
+        annotations:
+          summary: "WAF blocking high traffic: {{ $labels.rule }}"
+          description: "WAF is blocking {{ $value | printf \"%.0f\" }}/s requests for rule {{ $labels.rule }}"
+
+      - alert: WAFHighAllowedSuspicious
+        expr: rate(aws_wafv2_allowed_requests_sum[5m]) > 10000
+        for: 5m
+        labels:
+          severity: info
+          service_type: waf
+        annotations:
+          summary: "WAF high allowed traffic: {{ $labels.web_acl }}"
+          description: "WAF is allowing {{ $value | printf \"%.0f\" }}/s requests"

@@ -1,0 +1,160 @@
+global:
+  resolve_timeout: 5m
+  slack_api_url: '${SLACK_WEBHOOK_URL}'
+  smtp_smarthost: '${SMTP_HOST:-localhost:587}'
+  smtp_from: '${SMTP_FROM:-alerts@example.com}'
+  smtp_auth_username: '${SMTP_USER:-}'
+  smtp_auth_password: '${SMTP_PASSWORD:-}'
+
+# ─── Templates ────────────────────────────────────────────────────────
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# ─── Route Tree ───────────────────────────────────────────────────────
+route:
+  receiver: 'default'
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 10s
+  group_interval: 5m
+  repeat_interval: 12h
+
+  routes:
+    # Critical alerts → immediate Slack + PagerDuty
+    - match:
+        severity: critical
+      receiver: critical-alerts
+      group_wait: 0s
+      repeat_interval: 1h
+      continue: true
+
+    # SSL expiry alerts
+    - match:
+        alertname: SSLCertExpiringCritical
+      receiver: ssl-alerts
+      repeat_interval: 6h
+
+    - match:
+        alertname: SSLCertExpiringSoon
+      receiver: ssl-alerts
+      repeat_interval: 24h
+
+    # ECS alerts
+    - match:
+        service_type: ecs
+      receiver: ecs-alerts
+      group_by: ['alertname', 'service_name']
+
+    # Lambda alerts
+    - match:
+        service_type: lambda
+      receiver: lambda-alerts
+      group_by: ['alertname', 'function_name']
+
+    # API Gateway alerts
+    - match:
+        service_type: api-gateway
+      receiver: api-alerts
+      group_by: ['alertname', 'api_name']
+
+    # WAF alerts (lower priority)
+    - match:
+        service_type: waf
+      receiver: waf-alerts
+      group_wait: 30s
+      repeat_interval: 24h
+
+# ─── Receivers ────────────────────────────────────────────────────────
+receivers:
+  - name: 'default'
+    slack_configs:
+      - channel: '#monitoring-alerts'
+        title: '[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] Monitoring Alert'
+        text: >-
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Details:* {{ .Annotations.description }}
+          *Severity:* {{ .Labels.severity }}
+          {{ end }}
+        send_resolved: true
+
+  - name: 'critical-alerts'
+    slack_configs:
+      - channel: '#monitoring-critical'
+        title: '🚨 [CRITICAL] {{ .GroupLabels.alertname }}'
+        text: >-
+          {{ range .Alerts }}
+          *{{ .Annotations.summary }}*
+          {{ .Annotations.description }}
+          {{ end }}
+        send_resolved: true
+    # Uncomment to enable PagerDuty
+    # pagerduty_configs:
+    #   - service_key: '${PAGERDUTY_SERVICE_KEY}'
+    #     description: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+    # Uncomment to enable email
+    # email_configs:
+    #   - to: 'oncall@example.com'
+    #     subject: '[CRITICAL] {{ .GroupLabels.alertname }}'
+
+  - name: 'ssl-alerts'
+    slack_configs:
+      - channel: '#monitoring-ssl'
+        title: '🔐 SSL Certificate Alert: {{ .GroupLabels.alertname }}'
+        text: >-
+          {{ range .Alerts }}
+          *{{ .Annotations.summary }}*
+          {{ .Annotations.description }}
+          {{ end }}
+        send_resolved: true
+
+  - name: 'ecs-alerts'
+    slack_configs:
+      - channel: '#monitoring-ecs'
+        title: '🐳 ECS Alert: {{ .GroupLabels.alertname }}'
+        text: >-
+          {{ range .Alerts }}
+          *{{ .Annotations.summary }}*
+          {{ .Annotations.description }}
+          {{ end }}
+        send_resolved: true
+
+  - name: 'lambda-alerts'
+    slack_configs:
+      - channel: '#monitoring-lambda'
+        title: 'λ Lambda Alert: {{ .GroupLabels.alertname }}'
+        text: >-
+          {{ range .Alerts }}
+          *{{ .Annotations.summary }}*
+          {{ .Annotations.description }}
+          {{ end }}
+        send_resolved: true
+
+  - name: 'api-alerts'
+    slack_configs:
+      - channel: '#monitoring-api'
+        title: '🌐 API Gateway Alert: {{ .GroupLabels.alertname }}'
+        text: >-
+          {{ range .Alerts }}
+          *{{ .Annotations.summary }}*
+          {{ .Annotations.description }}
+          {{ end }}
+        send_resolved: true
+
+  - name: 'waf-alerts'
+    slack_configs:
+      - channel: '#monitoring-security'
+        title: '🛡️ WAF Alert: {{ .GroupLabels.alertname }}'
+        text: >-
+          {{ range .Alerts }}
+          *{{ .Annotations.summary }}*
+          {{ .Annotations.description }}
+          {{ end }}
+        send_resolved: true
+
+# ─── Inhibit Rules ────────────────────────────────────────────────────
+inhibit_rules:
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'cluster', 'service']

@@ -1,0 +1,13 @@
+apiVersion: 1
+
+providers:
+  - name: 'Observability Platform'
+    orgId: 1
+    folder: 'AWS Infrastructure'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: true

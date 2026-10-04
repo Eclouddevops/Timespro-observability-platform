@@ -1,0 +1,22 @@
+# ── Website & API endpoint monitoring ─────────────────────────────
+# These URLs are probed by Blackbox Exporter (HTTP 200 check)
+# Add all your public-facing websites and API Gateway endpoints here.
+# ─────────────────────────────────────────────────────────────────────
+
+- targets:
+    - 'https://example.com'
+    # - 'https://api.example.com/health'
+    # - 'https://app.example.com'
+    # - 'https://<api-id>.execute-api.us-east-1.amazonaws.com/prod/health'
+  labels:
+    env: production
+    service: website
+    region: us-east-1
+
+# API Gateway endpoints
+- targets:
+    # - 'https://<api-id>.execute-api.us-east-1.amazonaws.com/prod'
+  labels:
+    env: production
+    service: api-gateway
+    region: us-east-1

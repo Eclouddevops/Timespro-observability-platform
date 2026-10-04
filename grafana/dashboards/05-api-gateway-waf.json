@@ -1,0 +1,131 @@
+{
+  "uid": "api-gateway-waf",
+  "title": "🌐 API Gateway & WAF",
+  "tags": ["api-gateway", "waf", "aws"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "refresh": "1m",
+  "time": { "from": "now-3h", "to": "now" },
+  "templating": {
+    "list": [
+      { "name": "datasource", "type": "datasource", "query": "prometheus" },
+      {
+        "name": "api_name",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(aws_apigateway_count_sum, api_name)",
+        "label": "API Name",
+        "multi": true,
+        "includeAll": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1, "type": "row", "title": "API Gateway",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "collapsed": false
+    },
+    {
+      "id": 2, "type": "stat", "title": "Total Requests/min",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "color": { "mode": "fixed", "fixedColor": "blue" } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(rate(aws_apigateway_count_sum{api_name=~\"$api_name\"}[5m]))", "legendFormat": "RPS" }]
+    },
+    {
+      "id": 3, "type": "stat", "title": "4xx Error Rate",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "percent", "thresholds": { "mode": "absolute", "steps": [{"color": "green","value": 0}, {"color": "yellow","value": 2}, {"color": "red","value": 5}] }, "color": { "mode": "thresholds" } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(rate(aws_apigateway_4xxerror_sum{api_name=~\"$api_name\"}[5m])) / sum(rate(aws_apigateway_count_sum{api_name=~\"$api_name\"}[5m])) * 100", "legendFormat": "4xx %" }]
+    },
+    {
+      "id": 4, "type": "stat", "title": "5xx Error Rate",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "percent", "thresholds": { "mode": "absolute", "steps": [{"color": "green","value": 0}, {"color": "yellow","value": 0.5}, {"color": "red","value": 1}] }, "color": { "mode": "thresholds" } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(rate(aws_apigateway_5xxerror_sum{api_name=~\"$api_name\"}[5m])) / sum(rate(aws_apigateway_count_sum{api_name=~\"$api_name\"}[5m])) * 100", "legendFormat": "5xx %" }]
+    },
+    {
+      "id": 5, "type": "stat", "title": "Avg Latency",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "ms", "thresholds": { "mode": "absolute", "steps": [{"color": "green","value": 0}, {"color": "yellow","value": 1000}, {"color": "red","value": 3000}] }, "color": { "mode": "thresholds" } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "avg(aws_apigateway_latency_average{api_name=~\"$api_name\"})", "legendFormat": "Latency" }]
+    },
+    {
+      "id": 6, "type": "stat", "title": "p99 Latency",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "ms", "thresholds": { "mode": "absolute", "steps": [{"color": "green","value": 0}, {"color": "yellow","value": 3000}, {"color": "red","value": 10000}] }, "color": { "mode": "thresholds" } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "max(aws_apigateway_latency_p99{api_name=~\"$api_name\"})", "legendFormat": "p99" }]
+    },
+    {
+      "id": 10, "type": "timeseries", "title": "Request Rate & Errors",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "color": { "mode": "palette-classic" } } },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum by(api_name) (rate(aws_apigateway_count_sum{api_name=~\"$api_name\"}[5m]))", "legendFormat": "Total {{ api_name }}" },
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum by(api_name) (rate(aws_apigateway_4xxerror_sum{api_name=~\"$api_name\"}[5m]))", "legendFormat": "4xx {{ api_name }}" },
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum by(api_name) (rate(aws_apigateway_5xxerror_sum{api_name=~\"$api_name\"}[5m]))", "legendFormat": "5xx {{ api_name }}" }
+      ]
+    },
+    {
+      "id": 11, "type": "timeseries", "title": "Latency (Avg, Max, p99)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "ms", "color": { "mode": "palette-classic" } } },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "aws_apigateway_latency_average{api_name=~\"$api_name\"}", "legendFormat": "Avg {{ api_name }}" },
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "aws_apigateway_latency_p99{api_name=~\"$api_name\"}", "legendFormat": "p99 {{ api_name }}" }
+      ]
+    },
+    {
+      "id": 20, "type": "row", "title": "🛡️ WAF",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 }, "collapsed": false
+    },
+    {
+      "id": 21, "type": "stat", "title": "WAF Allowed Requests",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "color": { "mode": "fixed", "fixedColor": "green" } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(rate(aws_wafv2_allowed_requests_sum[5m]))", "legendFormat": "Allowed/s" }]
+    },
+    {
+      "id": 22, "type": "stat", "title": "WAF Blocked Requests",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "thresholds": { "mode": "absolute", "steps": [{"color": "green","value": 0}, {"color": "yellow","value": 10}, {"color": "red","value": 100}] }, "color": { "mode": "thresholds" } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(rate(aws_wafv2_blocked_requests_sum[5m]))", "legendFormat": "Blocked/s" }]
+    },
+    {
+      "id": 23, "type": "stat", "title": "Block Rate",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "percent", "thresholds": { "mode": "absolute", "steps": [{"color": "green","value": 0}, {"color": "yellow","value": 5}, {"color": "red","value": 20}] }, "color": { "mode": "thresholds" } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(rate(aws_wafv2_blocked_requests_sum[5m])) / (sum(rate(aws_wafv2_allowed_requests_sum[5m])) + sum(rate(aws_wafv2_blocked_requests_sum[5m]))) * 100", "legendFormat": "Block %" }]
+    },
+    {
+      "id": 24, "type": "timeseries", "title": "WAF Traffic — Allowed vs Blocked",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 18 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "color": { "mode": "palette-classic" } } },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum by(web_acl) (rate(aws_wafv2_allowed_requests_sum[5m]))", "legendFormat": "Allowed {{ web_acl }}" },
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum by(rule) (rate(aws_wafv2_blocked_requests_sum[5m]))", "legendFormat": "Blocked by rule: {{ rule }}" }
+      ]
+    }
+  ]
+}

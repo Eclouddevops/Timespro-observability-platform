@@ -1,0 +1,60 @@
+modules:
+  # ── HTTP 2xx Check ──────────────────────────────────────────────────
+  http_2xx:
+    prober: http
+    timeout: 15s
+    http:
+      method: GET
+      valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+      valid_status_codes: [200, 201, 204, 301, 302]
+      no_follow_redirects: false
+      fail_if_ssl: false
+      fail_if_not_ssl: false
+      tls_config:
+        insecure_skip_verify: false
+      preferred_ip_protocol: "ip4"
+
+  # ── HTTPS Only (fail on plain HTTP) ────────────────────────────────
+  http_2xx_ssl_required:
+    prober: http
+    timeout: 15s
+    http:
+      method: GET
+      valid_status_codes: [200, 201, 204]
+      fail_if_not_ssl: true
+      tls_config:
+        insecure_skip_verify: false
+
+  # ── POST endpoint probe ─────────────────────────────────────────────
+  http_post_2xx:
+    prober: http
+    timeout: 15s
+    http:
+      method: POST
+      valid_status_codes: [200, 201]
+      headers:
+        Content-Type: application/json
+
+  # ── TCP probe ────────────────────────────────────────────────────────
+  tcp_connect:
+    prober: tcp
+    timeout: 10s
+
+  # ── ICMP Ping ─────────────────────────────────────────────────────────
+  icmp:
+    prober: icmp
+    timeout: 10s
+    icmp:
+      preferred_ip_protocol: "ip4"
+
+  # ── DNS probe ─────────────────────────────────────────────────────────
+  dns_udp:
+    prober: dns
+    timeout: 10s
+    dns:
+      preferred_ip_protocol: "ip4"
+      transport_protocol: "udp"
+      query_name: "example.com"
+      query_type: "A"
+      valid_rcodes:
+        - NOERROR

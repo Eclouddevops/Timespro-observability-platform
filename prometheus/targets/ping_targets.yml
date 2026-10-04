@@ -1,0 +1,10 @@
+# ── ICMP Ping / Connectivity Monitoring ───────────────────────────
+# These hosts are ICMP-pinged by Blackbox Exporter for uptime checks.
+# ─────────────────────────────────────────────────────────────────────
+
+- targets:
+    # - '10.0.1.100'    # web-server-01
+    # - '10.0.2.50'     # db-server-01
+  labels:
+    env: production
+    service: ping

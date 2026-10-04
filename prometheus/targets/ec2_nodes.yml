@@ -1,0 +1,19 @@
+# ── EC2 Node Exporter targets ─────────────────────────────────────
+# Add your EC2 instances here. Node Exporter must be installed on each.
+# Port 9100 must be open in the security group for this Prometheus server.
+#
+# Usage:
+#   - targets: ['<private-ip>:9100']   # use private IP if in same VPC
+#   - targets: ['<public-ip>:9100']    # use public IP if external
+#
+# Recommended: Use AWS Systems Manager or Ansible to auto-update this file.
+# ─────────────────────────────────────────────────────────────────────
+
+- targets:
+    # - '10.0.1.100:9100'   # web-server-01 (us-east-1a)
+    # - '10.0.1.101:9100'   # web-server-02 (us-east-1b)
+    # - '10.0.2.50:9100'    # db-server-01
+  labels:
+    env: production
+    region: us-east-1
+    service: ec2
