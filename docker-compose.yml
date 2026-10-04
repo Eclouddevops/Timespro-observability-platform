@@ -165,6 +165,8 @@ services:
 
   # ─────────────────────────────────────────────
   # CLOUDWATCH EXPORTER (AWS Metrics)
+  # Uses EC2 IAM Instance Profile — NO static credentials needed.
+  # Attach IAM Role "ObservabilityServerRole" to this EC2 instance.
   # ─────────────────────────────────────────────
   cloudwatch-exporter:
     image: prom/cloudwatch-exporter:latest
@@ -174,10 +176,14 @@ services:
       - "9106:9106"
     volumes:
       - ./exporters/cloudwatch/config.yml:/config/config.yml:ro
+      # Mount EC2 instance metadata credentials into the container
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      # AWS SDK will auto-discover credentials from:
+      # 1. IAM Instance Profile (recommended - attach role to EC2)
+      # 2. ECS Task Role (if running on ECS)
+      # 3. ~/.aws/credentials (fallback, not recommended)
     networks:
       - monitoring
 
@@ -209,6 +215,7 @@ services:
 
   # ─────────────────────────────────────────────
   # AI OBSERVABILITY AGENT
+  # Uses EC2 IAM Instance Profile — NO static credentials needed.
   # ─────────────────────────────────────────────
   ai-agent:
     build:
@@ -225,9 +232,9 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      # AWS SDK auto-discovers credentials from IAM Instance Profile
+      # No AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY needed here
     volumes:
       - ./ai-agent:/app
     networks:
