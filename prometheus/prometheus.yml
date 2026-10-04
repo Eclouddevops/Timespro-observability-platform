@@ -28,11 +28,11 @@ scrape_configs:
 
   # ── Node Exporter (installed directly on EC2 host) ───
   # Node Exporter runs on the HOST (not in Docker).
-  # We use host.docker.internal to reach the host from inside Docker.
-  # Fallback: 172.17.0.1 is the default Docker bridge gateway IP.
+  # 172.18.0.1 is the custom bridge gateway — the host IP reachable
+  # from inside the observability-platform_monitoring Docker network.
   - job_name: 'node-exporter'
     static_configs:
-      - targets: ['172.17.0.1:9100']
+      - targets: ['172.18.0.1:9100']
         labels:
           instance: 'observability-server'
           service: 'node-exporter'

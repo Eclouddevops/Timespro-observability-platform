@@ -22,7 +22,7 @@ services:
     ports:
       - "9090:9090"
     extra_hosts:
-      - "host.docker.internal:host-gateway"   # allows reaching host node-exporter
+      - "host.docker.internal:172.18.0.1"   # custom bridge gateway = host
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/rules:/etc/prometheus/rules:ro
