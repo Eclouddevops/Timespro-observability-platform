@@ -3,7 +3,7 @@ global:
   evaluation_interval: 60s
   external_labels:
     monitor: 'observability-platform'
-    environment: '${ENVIRONMENT:-production}'
+    environment: 'production'
 
 alerting:
   alertmanagers:
@@ -24,17 +24,22 @@ scrape_configs:
       - targets: ['localhost:9090']
         labels:
           service: prometheus
-          env: '${ENVIRONMENT:-production}'
+          env: production
 
-  # ── Node Exporter (EC2 Host) ─────────────────────────
+  # ── Node Exporter (installed directly on EC2 host) ───
+  # Node Exporter runs on the HOST (not in Docker).
+  # We use host.docker.internal to reach the host from inside Docker.
+  # Fallback: 172.17.0.1 is the default Docker bridge gateway IP.
   - job_name: 'node-exporter'
     static_configs:
-      - targets: ['node-exporter:9100']
+      - targets: ['172.17.0.1:9100']
         labels:
           instance: 'observability-server'
           service: 'node-exporter'
-          env: '${ENVIRONMENT:-production}'
-    # File-based service discovery for additional EC2 nodes
+          env: production
+
+  # ── File-based discovery for additional EC2 nodes ────
+  - job_name: 'ec2-nodes'
     file_sd_configs:
       - files:
           - /etc/prometheus/targets/ec2_nodes.yml
@@ -51,9 +56,6 @@ scrape_configs:
   - job_name: 'cloudwatch'
     static_configs:
       - targets: ['cloudwatch-exporter:9106']
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: __address__
 
   # ── Blackbox Exporter (HTTP/HTTPS endpoints) ─────────
   - job_name: 'blackbox-http'
@@ -114,6 +116,6 @@ scrape_configs:
   # ── AI Observability Agent ────────────────────────────
   - job_name: 'ai-agent'
     static_configs:
-      - targets: ['ai-agent:8888']
+      - targets: ['ai-observability-agent:8888']
         labels:
           service: 'ai-observability-agent'
