@@ -1,12 +1,16 @@
 global:
   resolve_timeout: 5m
 
-  # ── SMTP / Email Settings ─────────────────────────────────────────────
-  smtp_smarthost:      '${SMTP_HOST:-smtp.gmail.com:587}'
-  smtp_from:           '${SMTP_FROM:-observability-alerts@gmail.com}'
-  smtp_auth_username:  '${SMTP_USER:-}'
-  smtp_auth_password:  '${SMTP_PASSWORD:-}'
-  smtp_require_tls:    true
+  # ── SMTP Settings — credentials loaded from AWS Secrets Manager ──────
+  # Run: sudo bash scripts/load-smtp-secret.sh
+  # This populates SMTP_HOST / SMTP_USER / SMTP_PASSWORD from
+  # AWS Secrets Manager (secret: observability/ses-smtp)
+  # NO passwords stored in this file or in .env
+  smtp_smarthost:     '${SMTP_HOST:-email-smtp.us-east-1.amazonaws.com:587}'
+  smtp_from:          '${SMTP_FROM:-observability-alerts@timesgroup.com}'
+  smtp_auth_username: '${SMTP_USER:-}'
+  smtp_auth_password: '${SMTP_PASSWORD:-}'
+  smtp_require_tls:   true
 
 # ── Templates ─────────────────────────────────────────────────────────
 templates:

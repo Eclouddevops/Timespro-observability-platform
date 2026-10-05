@@ -50,6 +50,26 @@ EC2 (observability-server)
       "Resource": "*"
     },
     {
+      "Sid": "SecretsManagerReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
+      ],
+      "Resource": "arn:aws:secretsmanager:*:496251222247:secret:observability/*"
+    },
+    {
+      "Sid": "SESReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "ses:SendEmail",
+        "ses:SendRawEmail",
+        "ses:ListVerifiedEmailAddresses",
+        "ses:GetSendStatistics"
+      ],
+      "Resource": "*"
+    },
+    {
       "Sid": "EC2ReadOnly",
       "Effect": "Allow",
       "Action": [
