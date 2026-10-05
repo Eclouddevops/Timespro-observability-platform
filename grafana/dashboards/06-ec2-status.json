@@ -1,11 +1,11 @@
 {
   "uid": "ec2-instance-status",
   "title": "🖥️ EC2 Instance Status",
-  "description": "All EC2 instances — live data from AWS CloudWatch via cloudwatch-exporter",
+  "description": "All EC2 instances — CPU, Network, Health from AWS CloudWatch",
   "tags": ["ec2", "aws", "cloudwatch"],
   "timezone": "browser",
   "schemaVersion": 38,
-  "version": 9,
+  "version": 10,
   "refresh": "1m",
   "time": { "from": "now-3h", "to": "now" },
   "templating": {
@@ -58,8 +58,8 @@
       },
       "targets": [{
         "datasource": { "type": "prometheus", "uid": "${datasource}" },
-        "expr": "count(aws_ec2_cpuutilization_average) or vector(0)",
-        "legendFormat": "Total"
+        "expr": "count(aws_ec2_cpuutilization_average) by (instance_id)",
+        "legendFormat": "{{ instance_id }}"
       }]
     },
 
@@ -87,8 +87,8 @@
       },
       "targets": [{
         "datasource": { "type": "prometheus", "uid": "${datasource}" },
-        "expr": "count(aws_ec2_status_check_failed_sum == 0) or vector(0)",
-        "legendFormat": "Healthy"
+        "expr": "count(aws_ec2_status_check_failed_sum == 0) by (instance_id)",
+        "legendFormat": "{{ instance_id }}"
       }]
     },
 
@@ -116,8 +116,8 @@
       },
       "targets": [{
         "datasource": { "type": "prometheus", "uid": "${datasource}" },
-        "expr": "count(aws_ec2_status_check_failed_sum > 0) or vector(0)",
-        "legendFormat": "Failed"
+        "expr": "count(aws_ec2_status_check_failed_sum > 0) by (instance_id)",
+        "legendFormat": "{{ instance_id }}"
       }]
     },
 
@@ -131,7 +131,7 @@
         "defaults": {
           "unit": "percent",
           "min": 0, "max": 100,
-          "decimals": 1,
+          "decimals": 2,
           "color": { "mode": "thresholds" },
           "thresholds": { "mode": "absolute", "steps": [
             { "color": "green",  "value": 0  },
@@ -147,7 +147,7 @@
       },
       "targets": [{
         "datasource": { "type": "prometheus", "uid": "${datasource}" },
-        "expr": "avg(aws_ec2_cpuutilization_average) or vector(0)",
+        "expr": "avg(aws_ec2_cpuutilization_average{instance_id=~\"$instance_id\"})",
         "legendFormat": "Avg CPU"
       }]
     },
@@ -162,6 +162,7 @@
         "defaults": {
           "unit": "percent",
           "min": 0, "max": 100,
+          "decimals": 2,
           "color": { "mode": "thresholds" },
           "thresholds": { "mode": "absolute", "steps": [
             { "color": "green",  "value": 0  },
@@ -177,7 +178,7 @@
       },
       "targets": [{
         "datasource": { "type": "prometheus", "uid": "${datasource}" },
-        "expr": "max(aws_ec2_cpuutilization_maximum) or vector(0)",
+        "expr": "max(aws_ec2_cpuutilization_maximum{instance_id=~\"$instance_id\"})",
         "legendFormat": "Max CPU"
       }]
     },
@@ -210,7 +211,7 @@
       "targets": [{
         "datasource": { "type": "prometheus", "uid": "${datasource}" },
         "expr": "up{job=\"cloudwatch\"}",
-        "legendFormat": "CloudWatch"
+        "legendFormat": "Status"
       }]
     },
 
@@ -223,7 +224,7 @@
     {
       "id": 20,
       "title": "All EC2 Instances — CPU, Network & Health",
-      "description": "Data from AWS CloudWatch — refreshes every 5 minutes. All instances show automatically.",
+      "description": "Live from AWS CloudWatch. All instances appear automatically.",
       "type": "table",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 6 },
@@ -238,11 +239,11 @@
           {
             "matcher": { "id": "byName", "options": "Health" },
             "properties": [
-              { "id": "custom.width", "value": 150 },
+              { "id": "custom.width", "value": 160 },
               { "id": "custom.displayMode", "value": "color-background" },
               { "id": "mappings", "value": [{ "type": "value", "options": {
-                "0": { "text": "🟢 Healthy",      "color": "green" },
-                "1": { "text": "🔴 Check Failed", "color": "red"   }
+                "0": { "text": "🟢  Healthy",      "color": "green" },
+                "1": { "text": "🔴  Check Failed", "color": "red"   }
               }}]}
             ]
           },
@@ -276,7 +277,7 @@
           },
           {
             "matcher": { "id": "byName", "options": "Instance ID" },
-            "properties": [{ "id": "custom.width", "value": 200 }]
+            "properties": [{ "id": "custom.width", "value": 210 }]
           },
           {
             "matcher": { "id": "byName", "options": "Time" },
@@ -319,29 +320,32 @@
         }
       ],
       "transformations": [
-        { "id": "merge", "options": {} },
+        {
+          "id": "merge",
+          "options": {}
+        },
         {
           "id": "organize",
           "options": {
             "excludeByName": {
-              "Time": true,
-              "job": true,
-              "__name__": true,
-              "instance": true
+              "Time":       true,
+              "job":        true,
+              "__name__":   true,
+              "instance":   true
             },
             "renameByName": {
-              "instance_id":   "Instance ID",
-              "Value #CPU":    "CPU %",
-              "Value #Status": "Health",
-              "Value #NetIn":  "Network In",
-              "Value #NetOut": "Network Out"
+              "instance_id":    "Instance ID",
+              "Value #CPU":     "CPU %",
+              "Value #Status":  "Health",
+              "Value #NetIn":   "Network In",
+              "Value #NetOut":  "Network Out"
             },
             "indexByName": {
-              "Instance ID": 0,
-              "Health":      1,
-              "CPU %":       2,
-              "Network In":  3,
-              "Network Out": 4
+              "Instance ID":  0,
+              "Health":       1,
+              "CPU %":        2,
+              "Network In":   3,
+              "Network Out":  4
             }
           }
         }
@@ -350,14 +354,13 @@
 
     {
       "id": 3, "type": "row",
-      "title": "🔥 CPU Usage Over Time",
+      "title": "🔥 CPU Usage",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 }
     },
 
     {
       "id": 30,
       "title": "CPU % per Instance",
-      "description": "From AWS CloudWatch — 5 minute resolution",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "gridPos": { "h": 8, "w": 16, "x": 0, "y": 15 },
@@ -386,7 +389,7 @@
 
     {
       "id": 31,
-      "title": "CPU Gauge",
+      "title": "CPU Current",
       "type": "bargauge",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 15 },
@@ -417,13 +420,13 @@
 
     {
       "id": 4, "type": "row",
-      "title": "🌐 Network Traffic",
+      "title": "🌐 Network",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 }
     },
 
     {
       "id": 40,
-      "title": "Network In (bytes/5min)",
+      "title": "Network In",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 24 },
@@ -447,7 +450,7 @@
 
     {
       "id": 41,
-      "title": "Network Out (bytes/5min)",
+      "title": "Network Out",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 24 },
@@ -477,8 +480,7 @@
 
     {
       "id": 50,
-      "title": "Status Check Failed (0=Healthy, 1=Failed)",
-      "description": "AWS checks both instance health and system health every minute",
+      "title": "Status Check Failed (0 = Healthy)",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "gridPos": { "h": 7, "w": 24, "x": 0, "y": 32 },
@@ -500,7 +502,11 @@
       },
       "options": {
         "tooltip": { "mode": "multi" },
-        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] }
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["lastNotNull"]
+        }
       },
       "targets": [{
         "datasource": { "type": "prometheus", "uid": "${datasource}" },
