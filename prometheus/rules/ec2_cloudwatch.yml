@@ -1,0 +1,21 @@
+groups:
+  - name: ec2_cloudwatch_enrich
+    interval: 60s
+    rules:
+      # Add friendly instance names to CloudWatch metrics
+      # Uses the ec2-inventory job labels to join instance_id → name
+      - record: ec2:cpu:average
+        expr: |
+          aws_ec2_cpuutilization_average
+
+      - record: ec2:status_check:failed
+        expr: |
+          aws_ec2_status_check_failed_sum
+
+      - record: ec2:network_in:rate5m
+        expr: |
+          rate(aws_ec2_network_in_sum[5m])
+
+      - record: ec2:network_out:rate5m
+        expr: |
+          rate(aws_ec2_network_out_sum[5m])

@@ -81,7 +81,11 @@ scrape_configs:
           service: 'cadvisor'
 
   # ── AWS CloudWatch (ECS/EC2/Lambda/API GW/WAF) ───────
+  # CloudWatch data has 5-min resolution — scrape every 5 min
+  # metrics_path /metrics is the default for this exporter
   - job_name: 'cloudwatch'
+    scrape_interval: 60s
+    scrape_timeout:  55s
     static_configs:
       - targets: ['cloudwatch-exporter:9106']
 
