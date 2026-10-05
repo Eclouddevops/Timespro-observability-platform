@@ -3,72 +3,100 @@ groups:
     interval: 60s
     rules:
 
-      # ── CPU ─────────────────────────────────────────────────────────
-      - alert: HighCPUUsage
-        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "High CPU usage on {{ $labels.instance }}"
-          description: "CPU usage is {{ $value | printf \"%.1f\" }}% on {{ $labels.instance }}"
+      # ══════════════════════════════════════════════════════════════════
+      # PRIORITY LEVELS
+      # P1 = Critical — immediate action, service down, data loss risk
+      # P2 = High     — urgent, degraded performance, act within 1 hour
+      # P3 = Medium   — warning, monitor closely, act within 4 hours
+      # ══════════════════════════════════════════════════════════════════
 
+      # ── Instance Down ─────────────────────────────────────────────────
+      - alert: InstanceDown
+        expr: up{job=~"node-exporter|ec2-nodes|windows-exporter"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          priority: P1
+          team: infrastructure
+        annotations:
+          summary: "🔴 [P1] Server DOWN: {{ $labels.instance }}"
+          description: "Server {{ $labels.instance }} has been completely unreachable for 2 minutes. Immediate investigation required."
+          runbook: "Check EC2 console, verify instance is running, check security groups and network ACLs."
+
+      # ── CPU ───────────────────────────────────────────────────────────
       - alert: CriticalCPUUsage
         expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 95
         for: 2m
         labels:
           severity: critical
+          priority: P1
+          team: infrastructure
         annotations:
-          summary: "CRITICAL: CPU usage on {{ $labels.instance }}"
-          description: "CPU usage is {{ $value | printf \"%.1f\" }}% on {{ $labels.instance }}"
+          summary: "🔴 [P1] CPU Critical: {{ $labels.instance }} at {{ $value | printf \"%.1f\" }}%"
+          description: "CPU usage has been above 95% for 2+ minutes on {{ $labels.instance }}. Server may become unresponsive."
+          runbook: "Identify top processes (top -bn1), consider scaling up or terminating runaway processes."
 
-      # ── Memory ──────────────────────────────────────────────────────
-      - alert: HighMemoryUsage
-        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
         for: 5m
         labels:
           severity: warning
+          priority: P2
+          team: infrastructure
         annotations:
-          summary: "High memory usage on {{ $labels.instance }}"
-          description: "Memory usage is {{ $value | printf \"%.1f\" }}% on {{ $labels.instance }}"
+          summary: "🟡 [P2] CPU High: {{ $labels.instance }} at {{ $value | printf \"%.1f\" }}%"
+          description: "CPU usage has been above 85% for 5+ minutes on {{ $labels.instance }}."
+          runbook: "Monitor for sustained increase. If trending up, consider scaling."
 
+      # ── Memory ────────────────────────────────────────────────────────
       - alert: CriticalMemoryUsage
         expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 95
         for: 2m
         labels:
           severity: critical
+          priority: P1
+          team: infrastructure
         annotations:
-          summary: "CRITICAL: Memory usage on {{ $labels.instance }}"
-          description: "Memory usage is {{ $value | printf \"%.1f\" }}% on {{ $labels.instance }}"
+          summary: "🔴 [P1] Memory Critical: {{ $labels.instance }} at {{ $value | printf \"%.1f\" }}%"
+          description: "Memory usage above 95% on {{ $labels.instance }}. OOM kill risk is high."
+          runbook: "Check memory-hungry processes (free -m, ps aux --sort=-%mem). Restart or scale immediately."
 
-      # ── Disk ─────────────────────────────────────────────────────────
-      - alert: DiskSpaceWarning
-        expr: (1 - (node_filesystem_avail_bytes{fstype!="tmpfs",fstype!="overlay"} / node_filesystem_size_bytes{fstype!="tmpfs",fstype!="overlay"})) * 100 > 75
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
         for: 5m
         labels:
           severity: warning
+          priority: P2
+          team: infrastructure
         annotations:
-          summary: "Disk space warning on {{ $labels.instance }}"
-          description: "Disk {{ $labels.mountpoint }} is {{ $value | printf \"%.1f\" }}% full on {{ $labels.instance }}"
+          summary: "🟡 [P2] Memory High: {{ $labels.instance }} at {{ $value | printf \"%.1f\" }}%"
+          description: "Memory usage above 85% on {{ $labels.instance }}."
+          runbook: "Identify high memory processes. Plan for scaling if sustained."
 
+      # ── Disk ──────────────────────────────────────────────────────────
       - alert: DiskSpaceCritical
         expr: (1 - (node_filesystem_avail_bytes{fstype!="tmpfs",fstype!="overlay"} / node_filesystem_size_bytes{fstype!="tmpfs",fstype!="overlay"})) * 100 > 90
         for: 2m
         labels:
           severity: critical
+          priority: P1
+          team: infrastructure
         annotations:
-          summary: "CRITICAL: Disk space on {{ $labels.instance }}"
-          description: "Disk {{ $labels.mountpoint }} is {{ $value | printf \"%.1f\" }}% full"
+          summary: "🔴 [P1] Disk Critical: {{ $labels.instance }} {{ $labels.mountpoint }} at {{ $value | printf \"%.1f\" }}%"
+          description: "Disk {{ $labels.mountpoint }} is {{ $value | printf \"%.1f\" }}% full on {{ $labels.instance }}. Application may crash."
+          runbook: "Run 'df -h' and 'du -sh /*' to find large files. Clean logs or expand volume immediately."
 
-      # ── Instance Down ─────────────────────────────────────────────────
-      - alert: InstanceDown
-        expr: up == 0
-        for: 2m
+      - alert: DiskSpaceWarning
+        expr: (1 - (node_filesystem_avail_bytes{fstype!="tmpfs",fstype!="overlay"} / node_filesystem_size_bytes{fstype!="tmpfs",fstype!="overlay"})) * 100 > 75
+        for: 5m
         labels:
-          severity: critical
+          severity: warning
+          priority: P3
+          team: infrastructure
         annotations:
-          summary: "Instance {{ $labels.instance }} is down"
-          description: "{{ $labels.job }} on {{ $labels.instance }} has been down for 2 minutes"
+          summary: "🟠 [P3] Disk Warning: {{ $labels.instance }} {{ $labels.mountpoint }} at {{ $value | printf \"%.1f\" }}%"
+          description: "Disk {{ $labels.mountpoint }} is {{ $value | printf \"%.1f\" }}% full on {{ $labels.instance }}."
+          runbook: "Plan disk cleanup or expansion before it reaches 90%."
 
       # ── Load Average ──────────────────────────────────────────────────
       - alert: HighLoadAverage
@@ -76,9 +104,12 @@ groups:
         for: 10m
         labels:
           severity: warning
+          priority: P2
+          team: infrastructure
         annotations:
-          summary: "High load average on {{ $labels.instance }}"
-          description: "15-minute load average is {{ $value | printf \"%.2f\" }} per core"
+          summary: "🟡 [P2] High Load: {{ $labels.instance }} load {{ $value | printf \"%.2f\" }} per core"
+          description: "15-minute load average is {{ $value | printf \"%.2f\" }} per CPU core on {{ $labels.instance }}."
+          runbook: "Check running processes. Consider scaling the instance type."
 
       # ── Network ───────────────────────────────────────────────────────
       - alert: NetworkHighBandwidth
@@ -86,6 +117,9 @@ groups:
         for: 5m
         labels:
           severity: warning
+          priority: P3
+          team: infrastructure
         annotations:
-          summary: "High network bandwidth on {{ $labels.instance }}"
-          description: "Receiving {{ $value | humanize }}B/s on {{ $labels.device }}"
+          summary: "🟠 [P3] High Network: {{ $labels.instance }} receiving {{ $value | humanize }}B/s"
+          description: "Unusually high network inbound traffic on {{ $labels.instance }}. May indicate a traffic spike or attack."
+          runbook: "Check CloudWatch for traffic source. Review WAF rules if needed."

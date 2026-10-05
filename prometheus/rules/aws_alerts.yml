@@ -1,164 +1,198 @@
 groups:
-  # ── SSL Certificate Expiry ──────────────────────────────────────────
+
+  # ── SSL Certificate Expiry ────────────────────────────────────────────
   - name: ssl_alerts
     rules:
-      - alert: SSLCertExpiringSoon
-        expr: ssl_cert_not_after - time() < 86400 * 30
-        for: 1h
+      - alert: SSLCertExpired
+        expr: ssl_cert_not_after - time() < 0
+        for: 1m
         labels:
-          severity: warning
+          severity: critical
+          priority: P1
+          team: infrastructure
         annotations:
-          summary: "SSL cert expiring in < 30 days: {{ $labels.instance }}"
-          description: "Certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
+          summary: "🔴 [P1] SSL EXPIRED: {{ $labels.instance }}"
+          description: "SSL certificate for {{ $labels.instance }} has EXPIRED. Users are seeing security errors right now."
+          runbook: "Renew certificate immediately via Let's Encrypt or ACM. DNS/CDN cache may need flushing."
 
       - alert: SSLCertExpiringCritical
         expr: ssl_cert_not_after - time() < 86400 * 7
         for: 1h
         labels:
           severity: critical
+          priority: P1
+          team: infrastructure
         annotations:
-          summary: "CRITICAL: SSL cert expiring in < 7 days: {{ $labels.instance }}"
-          description: "Certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
+          summary: "🔴 [P1] SSL Expiring < 7 days: {{ $labels.instance }}"
+          description: "Certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}. Renew NOW."
+          runbook: "Renew the certificate immediately. Check auto-renewal configuration."
 
-      - alert: SSLCertExpired
-        expr: ssl_cert_not_after - time() < 0
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: "SSL cert EXPIRED: {{ $labels.instance }}"
-          description: "Certificate for {{ $labels.instance }} has expired!"
-
-  # ── Website / URL Monitoring ────────────────────────────────────────
-  - name: blackbox_alerts
-    rules:
-      - alert: WebsiteDown
-        expr: probe_success == 0
-        for: 2m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Website DOWN: {{ $labels.instance }}"
-          description: "{{ $labels.instance }} has been unreachable for 2 minutes"
-
-      - alert: SlowWebsiteResponse
-        expr: probe_duration_seconds > 3
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Slow response: {{ $labels.instance }}"
-          description: "Response time is {{ $value | printf \"%.2f\" }}s for {{ $labels.instance }}"
-
-      - alert: SSLProbeFailed
-        expr: probe_ssl_earliest_cert_expiry - time() < 86400 * 30
+      - alert: SSLCertExpiringSoon
+        expr: ssl_cert_not_after - time() < 86400 * 30
         for: 1h
         labels:
           severity: warning
+          priority: P2
+          team: infrastructure
         annotations:
-          summary: "SSL probe expiry warning: {{ $labels.instance }}"
-          description: "TLS cert for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
+          summary: "🟡 [P2] SSL Expiring < 30 days: {{ $labels.instance }}"
+          description: "Certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}."
+          runbook: "Schedule certificate renewal. Verify auto-renewal is working."
 
-  # ── ECS Alerts ──────────────────────────────────────────────────────
+  # ── Website / URL Monitoring ─────────────────────────────────────────
+  - name: blackbox_alerts
+    rules:
+      - alert: WebsiteDown
+        expr: probe_success{job="blackbox-http"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          priority: P1
+          team: infrastructure
+        annotations:
+          summary: "🔴 [P1] Website DOWN: {{ $labels.instance }}"
+          description: "{{ $labels.instance }} has been completely unreachable for 2 minutes. Users cannot access the site."
+          runbook: "Check EC2/ECS health, load balancer, DNS. Test manually: curl -I {{ $labels.instance }}"
+
+      - alert: SlowWebsiteResponse
+        expr: probe_duration_seconds{job="blackbox-http"} > 3
+        for: 5m
+        labels:
+          severity: warning
+          priority: P2
+          team: infrastructure
+        annotations:
+          summary: "🟡 [P2] Slow Website: {{ $labels.instance }} taking {{ $value | printf \"%.1f\" }}s"
+          description: "Response time above 3 seconds for 5+ minutes on {{ $labels.instance }}."
+          runbook: "Check server CPU/memory, database queries, CDN configuration."
+
+  # ── ECS ───────────────────────────────────────────────────────────────
   - name: ecs_alerts
     rules:
+      - alert: ECSTaskStopped
+        expr: aws_ecs_running_task_count_average < 1
+        for: 2m
+        labels:
+          severity: critical
+          priority: P1
+          team: infrastructure
+          service_type: ecs
+        annotations:
+          summary: "🔴 [P1] ECS Service DOWN: {{ $labels.service_name }}"
+          description: "ECS service {{ $labels.service_name }} has 0 running tasks. Service is completely down."
+          runbook: "Check ECS service events, task definition, ECR image availability, IAM task role."
+
       - alert: ECSServiceHighCPU
         expr: aws_ecs_cpuutilization_average > 80
         for: 5m
         labels:
           severity: warning
+          priority: P2
+          team: infrastructure
           service_type: ecs
         annotations:
-          summary: "ECS service high CPU: {{ $labels.service_name }}"
-          description: "ECS service {{ $labels.service_name }} CPU at {{ $value | printf \"%.1f\" }}%"
+          summary: "🟡 [P2] ECS High CPU: {{ $labels.service_name }} at {{ $value | printf \"%.1f\" }}%"
+          description: "ECS service {{ $labels.service_name }} CPU at {{ $value | printf \"%.1f\" }}% for 5+ minutes."
+          runbook: "Consider increasing desired task count or moving to larger task size."
 
       - alert: ECSServiceHighMemory
         expr: aws_ecs_memory_utilization_average > 80
         for: 5m
         labels:
           severity: warning
+          priority: P2
+          team: infrastructure
           service_type: ecs
         annotations:
-          summary: "ECS service high memory: {{ $labels.service_name }}"
-          description: "ECS service {{ $labels.service_name }} memory at {{ $value | printf \"%.1f\" }}%"
+          summary: "🟡 [P2] ECS High Memory: {{ $labels.service_name }} at {{ $value | printf \"%.1f\" }}%"
+          description: "ECS service {{ $labels.service_name }} memory at {{ $value | printf \"%.1f\" }}%."
+          runbook: "Check for memory leaks. Increase task memory limit if needed."
 
-      - alert: ECSTaskStopped
-        expr: aws_ecs_running_task_count_average < 1
-        for: 2m
-        labels:
-          severity: critical
-          service_type: ecs
-        annotations:
-          summary: "ECS service has no running tasks: {{ $labels.service_name }}"
-          description: "ECS service {{ $labels.service_name }} has {{ $value }} running tasks"
-
-  # ── Lambda Alerts ────────────────────────────────────────────────────
+  # ── Lambda ────────────────────────────────────────────────────────────
   - name: lambda_alerts
     rules:
       - alert: LambdaHighErrorRate
         expr: rate(aws_lambda_errors_sum[5m]) / rate(aws_lambda_invocations_sum[5m]) > 0.05
         for: 5m
         labels:
-          severity: warning
+          severity: critical
+          priority: P1
+          team: infrastructure
           service_type: lambda
         annotations:
-          summary: "Lambda high error rate: {{ $labels.function_name }}"
-          description: "Error rate is {{ $value | printf \"%.2f\" }}% for {{ $labels.function_name }}"
+          summary: "🔴 [P1] Lambda Errors: {{ $labels.function_name }} error rate {{ $value | printf \"%.1f\" }}%"
+          description: "Lambda function {{ $labels.function_name }} has error rate above 5%."
+          runbook: "Check CloudWatch Logs for this function. Review recent deployments."
 
       - alert: LambdaThrottling
         expr: rate(aws_lambda_throttles_sum[5m]) > 10
         for: 5m
         labels:
           severity: warning
+          priority: P2
+          team: infrastructure
           service_type: lambda
         annotations:
-          summary: "Lambda throttling: {{ $labels.function_name }}"
-          description: "{{ $labels.function_name }} is being throttled ({{ $value | printf \"%.0f\" }}/s)"
+          summary: "🟡 [P2] Lambda Throttled: {{ $labels.function_name }}"
+          description: "{{ $labels.function_name }} is being throttled {{ $value | printf \"%.0f\" }}/s."
+          runbook: "Request concurrency limit increase via AWS Support or configure reserved concurrency."
 
       - alert: LambdaHighDuration
         expr: aws_lambda_duration_p99 > 10000
         for: 5m
         labels:
           severity: warning
+          priority: P3
+          team: infrastructure
           service_type: lambda
         annotations:
-          summary: "Lambda slow execution: {{ $labels.function_name }}"
-          description: "p99 duration is {{ $value }}ms for {{ $labels.function_name }}"
+          summary: "🟠 [P3] Lambda Slow: {{ $labels.function_name }} p99={{ $value }}ms"
+          description: "Lambda {{ $labels.function_name }} p99 execution time above 10 seconds."
+          runbook: "Profile the function. Check for cold starts, DB connections, or heavy computation."
 
-  # ── API Gateway Alerts ───────────────────────────────────────────────
+  # ── API Gateway ───────────────────────────────────────────────────────
   - name: api_gateway_alerts
     rules:
-      - alert: APIGatewayHighError4xx
-        expr: rate(aws_apigateway_4xxerror_sum[5m]) / rate(aws_apigateway_count_sum[5m]) > 0.05
-        for: 5m
-        labels:
-          severity: warning
-          service_type: api-gateway
-        annotations:
-          summary: "API Gateway 4xx error rate: {{ $labels.api_name }}"
-          description: "4xx error rate is {{ $value | printf \"%.2f\" }}% for {{ $labels.api_name }}"
-
       - alert: APIGatewayHighError5xx
         expr: rate(aws_apigateway_5xxerror_sum[5m]) / rate(aws_apigateway_count_sum[5m]) > 0.01
         for: 5m
         labels:
           severity: critical
+          priority: P1
+          team: infrastructure
           service_type: api-gateway
         annotations:
-          summary: "API Gateway 5xx error rate: {{ $labels.api_name }}"
-          description: "5xx error rate is {{ $value | printf \"%.2f\" }}% for {{ $labels.api_name }}"
+          summary: "🔴 [P1] API Gateway 5xx: {{ $labels.api_name }} {{ $value | printf \"%.2f\" }}% errors"
+          description: "API Gateway {{ $labels.api_name }} has 5xx error rate above 1%. Backend service likely failing."
+          runbook: "Check backend Lambda/ECS health. Review CloudWatch logs for the API."
+
+      - alert: APIGatewayHighError4xx
+        expr: rate(aws_apigateway_4xxerror_sum[5m]) / rate(aws_apigateway_count_sum[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          priority: P2
+          team: infrastructure
+          service_type: api-gateway
+        annotations:
+          summary: "🟡 [P2] API Gateway 4xx: {{ $labels.api_name }} {{ $value | printf \"%.2f\" }}% errors"
+          description: "API Gateway {{ $labels.api_name }} has high 4xx error rate. Possible auth or request issues."
+          runbook: "Review API access logs for common error patterns. Check auth configuration."
 
       - alert: APIGatewayHighLatency
         expr: aws_apigateway_latency_p99 > 5000
         for: 5m
         labels:
           severity: warning
+          priority: P3
+          team: infrastructure
           service_type: api-gateway
         annotations:
-          summary: "API Gateway high latency: {{ $labels.api_name }}"
-          description: "p99 latency is {{ $value }}ms for {{ $labels.api_name }}"
+          summary: "🟠 [P3] API Gateway Slow: {{ $labels.api_name }} p99={{ $value }}ms"
+          description: "API Gateway {{ $labels.api_name }} p99 latency above 5 seconds."
+          runbook: "Profile backend. Check database, cache, and integration latency."
 
-  # ── EC2 ASG Alerts ────────────────────────────────────────────────────
+  # ── ASG ───────────────────────────────────────────────────────────────
   - name: asg_alerts
     rules:
       - alert: ASGCapacityLow
@@ -166,12 +200,15 @@ groups:
         for: 5m
         labels:
           severity: critical
+          priority: P1
+          team: infrastructure
           service_type: asg
         annotations:
-          summary: "ASG capacity below 50%: {{ $labels.auto_scaling_group_name }}"
-          description: "Only {{ $value }} of desired instances are in service"
+          summary: "🔴 [P1] ASG Capacity Low: {{ $labels.auto_scaling_group_name }}"
+          description: "Auto Scaling Group {{ $labels.auto_scaling_group_name }} has less than 50% of desired capacity."
+          runbook: "Check EC2 instance health, launch template, and AMI availability."
 
-  # ── WAF Alerts ────────────────────────────────────────────────────────
+  # ── WAF ───────────────────────────────────────────────────────────────
   - name: waf_alerts
     rules:
       - alert: WAFHighBlockedRequests
@@ -179,17 +216,10 @@ groups:
         for: 5m
         labels:
           severity: warning
+          priority: P2
+          team: security
           service_type: waf
         annotations:
-          summary: "WAF blocking high traffic: {{ $labels.rule }}"
-          description: "WAF is blocking {{ $value | printf \"%.0f\" }}/s requests for rule {{ $labels.rule }}"
-
-      - alert: WAFHighAllowedSuspicious
-        expr: rate(aws_wafv2_allowed_requests_sum[5m]) > 10000
-        for: 5m
-        labels:
-          severity: info
-          service_type: waf
-        annotations:
-          summary: "WAF high allowed traffic: {{ $labels.web_acl }}"
-          description: "WAF is allowing {{ $value | printf \"%.0f\" }}/s requests"
+          summary: "🟡 [P2] WAF Blocking: {{ $labels.rule }} — {{ $value | printf \"%.0f\" }}/s"
+          description: "WAF rule {{ $labels.rule }} is blocking {{ $value | printf \"%.0f\" }} requests/second. Possible attack."
+          runbook: "Review WAF logs. Check if legitimate traffic is being blocked (false positive)."

@@ -1,111 +1,159 @@
 global:
   resolve_timeout: 5m
-  smtp_smarthost: '${SMTP_HOST:-localhost:587}'
-  smtp_from: '${SMTP_FROM:-alerts@example.com}'
-  smtp_auth_username: '${SMTP_USER:-}'
-  smtp_auth_password: '${SMTP_PASSWORD:-}'
 
-# ─── Templates ────────────────────────────────────────────────────────
+  # ── SMTP / Email Settings ─────────────────────────────────────────────
+  smtp_smarthost:      '${SMTP_HOST:-smtp.gmail.com:587}'
+  smtp_from:           '${SMTP_FROM:-observability-alerts@gmail.com}'
+  smtp_auth_username:  '${SMTP_USER:-}'
+  smtp_auth_password:  '${SMTP_PASSWORD:-}'
+  smtp_require_tls:    true
+
+# ── Templates ─────────────────────────────────────────────────────────
 templates:
   - '/etc/alertmanager/templates/*.tmpl'
 
-# ─── Route Tree ───────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════
+# ROUTING TREE
+#
+# Priority levels:
+#   P1 (critical) → Email immediately + MS Teams + repeat every 1h
+#   P2 (warning)  → Email + MS Teams + repeat every 4h
+#   P3 (warning)  → Email daily digest + MS Teams
+#
+# continue: true means alert matches this route AND falls through
+# to the next matching route (so both email + teams fire)
+# ══════════════════════════════════════════════════════════════════════
 route:
   receiver: 'msteams-default'
-  group_by: ['alertname', 'cluster', 'service']
+  group_by: ['alertname', 'priority', 'instance']
   group_wait: 10s
   group_interval: 5m
   repeat_interval: 12h
 
   routes:
-    # Critical alerts → immediate notification
+
+    # ── P1 Critical — immediate email + teams, repeat every 1h ────────
     - match:
-        severity: critical
-      receiver: msteams-critical
+        priority: P1
+      receiver: p1-critical
       group_wait: 0s
+      group_interval: 1m
       repeat_interval: 1h
-      continue: true
+      continue: false
 
-    # SSL expiry alerts
-    - match_re:
-        alertname: 'SSLCertExpiring.*|SSLCertExpired'
-      receiver: msteams-ssl
-      repeat_interval: 6h
-
-    # ECS alerts
+    # ── P2 High — email + teams, repeat every 4h ──────────────────────
     - match:
-        service_type: ecs
-      receiver: msteams-ecs
-      group_by: ['alertname', 'service_name']
-
-    # Lambda alerts
-    - match:
-        service_type: lambda
-      receiver: msteams-lambda
-      group_by: ['alertname', 'function_name']
-
-    # API Gateway alerts
-    - match:
-        service_type: api-gateway
-      receiver: msteams-api
-      group_by: ['alertname', 'api_name']
-
-    # WAF alerts
-    - match:
-        service_type: waf
-      receiver: msteams-waf
+        priority: P2
+      receiver: p2-high
       group_wait: 30s
-      repeat_interval: 24h
+      group_interval: 5m
+      repeat_interval: 4h
+      continue: false
 
-# ─── Receivers ────────────────────────────────────────────────────────
-# All receivers post to alertmanager-msteams proxy (port 2000)
-# which converts alerts into MS Teams Adaptive Cards.
-# Each receiver maps to a named "connector" in msteams-config.yml
-# ──────────────────────────────────────────────────────────────────────
+    # ── P3 Medium — email + teams, repeat every 12h ───────────────────
+    - match:
+        priority: P3
+      receiver: p3-medium
+      group_wait: 60s
+      group_interval: 10m
+      repeat_interval: 12h
+      continue: false
+
+    # ── SSL Expiry — separate routing ─────────────────────────────────
+    - match_re:
+        alertname: 'SSLCertExpired|SSLCertExpiringCritical'
+      receiver: p1-critical
+      repeat_interval: 6h
+      continue: false
+
+    - match:
+        alertname: SSLCertExpiringSoon
+      receiver: p2-high
+      repeat_interval: 24h
+      continue: false
+
+# ══════════════════════════════════════════════════════════════════════
+# RECEIVERS
+# ══════════════════════════════════════════════════════════════════════
 receivers:
 
+  # ── Default (fallback) ─────────────────────────────────────────────
   - name: 'msteams-default'
     webhook_configs:
       - url: 'http://alertmanager-msteams:2000/alertmanager'
         send_resolved: true
-        http_config:
-          tls_config:
-            insecure_skip_verify: false
 
-  - name: 'msteams-critical'
+  # ── P1 Critical — Email + MS Teams ────────────────────────────────
+  - name: 'p1-critical'
+    email_configs:
+      - to: 'Santosh.mirajkar@timesgroup.com, samirajkar99@gmail.com'
+        send_resolved: true
+        html: '{{ template "email.html" . }}'
+        subject: '{{ template "email.subject" . }}'
+        headers:
+          X-Priority: '1'
+          X-Alert-Priority: 'P1-Critical'
+          Importance: 'high'
+        smarthost: '${SMTP_HOST:-smtp.gmail.com:587}'
+        from:      '${SMTP_FROM:-observability-alerts@gmail.com}'
+        auth_username: '${SMTP_USER:-}'
+        auth_password: '${SMTP_PASSWORD:-}'
+        require_tls: true
+
     webhook_configs:
       - url: 'http://alertmanager-msteams:2000/alertmanager'
         send_resolved: true
 
-  - name: 'msteams-ssl'
+  # ── P2 High — Email + MS Teams ─────────────────────────────────────
+  - name: 'p2-high'
+    email_configs:
+      - to: 'Santosh.mirajkar@timesgroup.com, samirajkar99@gmail.com'
+        send_resolved: true
+        html: '{{ template "email.html" . }}'
+        subject: '{{ template "email.subject" . }}'
+        headers:
+          X-Priority: '2'
+          X-Alert-Priority: 'P2-High'
+        smarthost: '${SMTP_HOST:-smtp.gmail.com:587}'
+        from:      '${SMTP_FROM:-observability-alerts@gmail.com}'
+        auth_username: '${SMTP_USER:-}'
+        auth_password: '${SMTP_PASSWORD:-}'
+        require_tls: true
+
     webhook_configs:
       - url: 'http://alertmanager-msteams:2000/alertmanager'
         send_resolved: true
 
-  - name: 'msteams-ecs'
+  # ── P3 Medium — Email + MS Teams ───────────────────────────────────
+  - name: 'p3-medium'
+    email_configs:
+      - to: 'Santosh.mirajkar@timesgroup.com, samirajkar99@gmail.com'
+        send_resolved: true
+        html: '{{ template "email.html" . }}'
+        subject: '{{ template "email.subject" . }}'
+        headers:
+          X-Priority: '3'
+          X-Alert-Priority: 'P3-Medium'
+        smarthost: '${SMTP_HOST:-smtp.gmail.com:587}'
+        from:      '${SMTP_FROM:-observability-alerts@gmail.com}'
+        auth_username: '${SMTP_USER:-}'
+        auth_password: '${SMTP_PASSWORD:-}'
+        require_tls: true
+
     webhook_configs:
       - url: 'http://alertmanager-msteams:2000/alertmanager'
         send_resolved: true
 
-  - name: 'msteams-lambda'
-    webhook_configs:
-      - url: 'http://alertmanager-msteams:2000/alertmanager'
-        send_resolved: true
-
-  - name: 'msteams-api'
-    webhook_configs:
-      - url: 'http://alertmanager-msteams:2000/alertmanager'
-        send_resolved: true
-
-  - name: 'msteams-waf'
-    webhook_configs:
-      - url: 'http://alertmanager-msteams:2000/alertmanager'
-        send_resolved: true
-
-# ─── Inhibit Rules ────────────────────────────────────────────────────
+# ── Inhibit Rules ──────────────────────────────────────────────────────
+# P1 suppresses P2/P3 for same alert on same instance
 inhibit_rules:
   - source_match:
-      severity: 'critical'
+      priority: 'P1'
+    target_match_re:
+      priority: 'P2|P3'
+    equal: ['alertname', 'instance']
+  - source_match:
+      priority: 'P2'
     target_match:
-      severity: 'warning'
-    equal: ['alertname', 'cluster', 'service']
+      priority: 'P3'
+    equal: ['alertname', 'instance']

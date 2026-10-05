@@ -1,0 +1,178 @@
+{{ define "email.subject" -}}
+[{{ .Status | toUpper }}] {{ range .Alerts }}{{ .Labels.priority }} {{ end }}— {{ .GroupLabels.alertname }} — Observability Platform
+{{- end }}
+
+{{ define "email.html" -}}
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <style>
+    body        { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 20px; color: #333; }
+    .container  { max-width: 680px; margin: auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+    .header     { padding: 24px 28px; color: #fff; }
+    .header-p1  { background: linear-gradient(135deg, #c0392b, #e74c3c); }
+    .header-p2  { background: linear-gradient(135deg, #d35400, #e67e22); }
+    .header-p3  { background: linear-gradient(135deg, #b7950b, #f39c12); }
+    .header-ok  { background: linear-gradient(135deg, #1a7a2a, #27ae60); }
+    .header h1  { margin: 0 0 6px; font-size: 22px; }
+    .header p   { margin: 0; font-size: 14px; opacity: 0.9; }
+    .badge      { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: bold; background: rgba(255,255,255,0.25); margin-bottom: 8px; }
+    .body       { padding: 24px 28px; }
+    .alert-card { border: 1px solid #e0e0e0; border-radius: 6px; margin-bottom: 16px; overflow: hidden; }
+    .alert-head { padding: 12px 16px; font-weight: bold; font-size: 15px; }
+    .firing     { background: #fdecea; border-left: 4px solid #e74c3c; }
+    .resolved   { background: #eafaf1; border-left: 4px solid #27ae60; }
+    .alert-body { padding: 12px 16px; background: #fafafa; }
+    .row        { display: flex; margin-bottom: 8px; }
+    .label      { font-weight: bold; color: #555; min-width: 130px; font-size: 13px; }
+    .value      { font-size: 13px; color: #222; flex: 1; }
+    .runbook    { background: #fff8e1; border: 1px solid #ffe082; border-radius: 4px; padding: 10px 14px; margin-top: 10px; font-size: 13px; }
+    .runbook strong { color: #b7770d; }
+    .divider    { border: none; border-top: 1px solid #eee; margin: 20px 0; }
+    .footer     { background: #f8f8f8; padding: 16px 28px; font-size: 12px; color: #888; border-top: 1px solid #e0e0e0; }
+    .footer a   { color: #3498db; text-decoration: none; }
+    .p1-badge   { background: #e74c3c; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+    .p2-badge   { background: #e67e22; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+    .p3-badge   { background: #f39c12; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+    .ok-badge   { background: #27ae60; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  {{/* ── Header ── */}}
+  {{ $priority := "" }}
+  {{ range .Alerts }}{{ if .Labels.priority }}{{ $priority = .Labels.priority }}{{ end }}{{ end }}
+
+  <div class="header {{ if eq .Status "resolved" }}header-ok{{ else if eq $priority "P1" }}header-p1{{ else if eq $priority "P2" }}header-p2{{ else }}header-p3{{ end }}">
+    {{ if eq .Status "resolved" }}
+      <div class="badge">✅ RESOLVED</div>
+    {{ else }}
+      <div class="badge">
+        {{ if eq $priority "P1" }}🔴 P1 — CRITICAL{{ else if eq $priority "P2" }}🟡 P2 — HIGH{{ else }}🟠 P3 — MEDIUM{{ end }}
+      </div>
+    {{ end }}
+    <h1>{{ if eq .Status "resolved" }}✅ Alert Resolved{{ else }}⚠️ Alert Firing{{ end }}</h1>
+    <p>{{ .Alerts | len }} alert(s) &nbsp;·&nbsp; {{ now | humanizeTimestamp }}</p>
+  </div>
+
+  <div class="body">
+
+    {{/* ── Per-alert cards ── */}}
+    {{ range .Alerts }}
+    <div class="alert-card">
+      <div class="alert-head {{ if eq $.Status "resolved" }}resolved{{ else }}firing{{ end }}">
+        {{ if eq $.Status "resolved" }}✅{{ else }}🚨{{ end }}
+        &nbsp;{{ .Annotations.summary }}
+      </div>
+      <div class="alert-body">
+
+        <div class="row">
+          <span class="label">Priority</span>
+          <span class="value">
+            {{ if eq .Labels.priority "P1" }}<span class="p1-badge">P1 — Critical (act immediately)</span>
+            {{ else if eq .Labels.priority "P2" }}<span class="p2-badge">P2 — High (act within 1 hour)</span>
+            {{ else if eq .Labels.priority "P3" }}<span class="p3-badge">P3 — Medium (act within 4 hours)</span>
+            {{ else }}<span class="ok-badge">Resolved</span>{{ end }}
+          </span>
+        </div>
+
+        <div class="row">
+          <span class="label">Severity</span>
+          <span class="value">{{ .Labels.severity | toUpper }}</span>
+        </div>
+
+        {{ if .Labels.instance }}
+        <div class="row">
+          <span class="label">Server / Instance</span>
+          <span class="value"><strong>{{ .Labels.instance }}</strong></span>
+        </div>
+        {{ end }}
+
+        {{ if .Labels.region }}
+        <div class="row">
+          <span class="label">AWS Region</span>
+          <span class="value">{{ .Labels.region }}</span>
+        </div>
+        {{ end }}
+
+        {{ if .Labels.service_type }}
+        <div class="row">
+          <span class="label">Service Type</span>
+          <span class="value">{{ .Labels.service_type | toUpper }}</span>
+        </div>
+        {{ end }}
+
+        <div class="row">
+          <span class="label">Alert Name</span>
+          <span class="value">{{ .Labels.alertname }}</span>
+        </div>
+
+        <div class="row">
+          <span class="label">Started At</span>
+          <span class="value">{{ .StartsAt | humanizeTimestamp }}</span>
+        </div>
+
+        {{ if ne .EndsAt.IsZero false }}
+        <div class="row">
+          <span class="label">Ended At</span>
+          <span class="value">{{ .EndsAt | humanizeTimestamp }}</span>
+        </div>
+        {{ end }}
+
+        <div class="row">
+          <span class="label">Description</span>
+          <span class="value">{{ .Annotations.description }}</span>
+        </div>
+
+        {{ if .Annotations.runbook }}
+        <div class="runbook">
+          <strong>🛠 Runbook / Action:</strong><br>
+          {{ .Annotations.runbook }}
+        </div>
+        {{ end }}
+
+      </div>
+    </div>
+    {{ end }}
+
+    <hr class="divider">
+
+    {{/* ── Quick Links ── */}}
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="padding:8px;">
+          <a href="${GRAFANA_ROOT_URL:-http://localhost:3000}/dashboards"
+             style="display:block;padding:10px 14px;background:#3498db;color:#fff;text-decoration:none;border-radius:5px;text-align:center;font-size:13px;">
+            📊 Open Grafana Dashboards
+          </a>
+        </td>
+        <td style="padding:8px;">
+          <a href="${GRAFANA_ROOT_URL:-http://localhost:3000}/d/ec2-instance-status"
+             style="display:block;padding:10px 14px;background:#2ecc71;color:#fff;text-decoration:none;border-radius:5px;text-align:center;font-size:13px;">
+            🖥️ EC2 Instance Status
+          </a>
+        </td>
+        <td style="padding:8px;">
+          <a href="http://localhost:9093"
+             style="display:block;padding:10px 14px;background:#e67e22;color:#fff;text-decoration:none;border-radius:5px;text-align:center;font-size:13px;">
+            🔔 Alertmanager
+          </a>
+        </td>
+      </tr>
+    </table>
+
+  </div>
+
+  <div class="footer">
+    <strong>Observability Platform</strong> — AWS Infrastructure Monitoring<br>
+    Sent by Alertmanager &nbsp;·&nbsp; Account: 496251222247 &nbsp;·&nbsp; Region: us-east-1<br>
+    <small>To unsubscribe or change notification settings, contact your administrator.</small>
+  </div>
+
+</div>
+</body>
+</html>
+{{- end }}
