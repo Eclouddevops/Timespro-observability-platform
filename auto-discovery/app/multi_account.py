@@ -44,6 +44,9 @@ logger = logging.getLogger(__name__)
 # ── Config ────────────────────────────────────────────────────────────
 PROMETHEUS_URL      = os.getenv("PROMETHEUS_URL", "http://prometheus:9090")
 TARGETS_DIR         = os.getenv("TARGETS_DIR", "/etc/prometheus/targets")
+# EC2_TARGETS_FILE overrides TARGETS_DIR/ec2_nodes.yml if set
+_ec2_targets_file   = os.getenv("EC2_TARGETS_FILE", "")
+EC2_TARGETS_FILE    = _ec2_targets_file if _ec2_targets_file else os.path.join(TARGETS_DIR, "ec2_nodes.yml")
 CW_CONFIG_FILE      = os.getenv("CW_CONFIG_FILE", "/etc/cloudwatch/config.yml")
 MSTEAMS_WEBHOOK_URL = os.getenv("MSTEAMS_WEBHOOK_URL", "")
 NODE_EXPORTER_PORT  = int(os.getenv("NODE_EXPORTER_PORT", "9100"))
@@ -51,6 +54,9 @@ CONNECT_TIMEOUT     = int(os.getenv("CONNECT_TIMEOUT_SEC", "3"))
 USE_PRIVATE_IP      = os.getenv("USE_PRIVATE_IP", "true").lower() == "true"
 TAG_FILTER_KEY      = os.getenv("TAG_FILTER_KEY", "")
 TAG_FILTER_VALUE    = os.getenv("TAG_FILTER_VALUE", "true")
+# If true, add instance to targets even if Node Exporter is not yet reachable
+# Useful when instances are new and NE hasn't been installed yet
+INCLUDE_UNREACHABLE = os.getenv("INCLUDE_UNREACHABLE_INSTANCES", "true").lower() == "true"
 
 # AWS Accounts config — JSON list of account dicts
 # Format: [{"id":"123456789","name":"prod","role_arn":"arn:aws:iam::123456789:role/ObservabilityRole","regions":["us-east-1","eu-west-1"]}]
@@ -221,19 +227,42 @@ class MultiAccountDiscovery:
         for page in paginator.paginate(Filters=filters):
             for res in page["Reservations"]:
                 for inst in res["Instances"]:
-                    tags  = {t["Key"]: t["Value"] for t in inst.get("Tags", [])}
-                    name  = tags.get("Name", inst["InstanceId"])
-                    ip    = inst.get("PrivateIpAddress","") if USE_PRIVATE_IP else inst.get("PublicIpAddress","")
+                    tags       = {t["Key"]: t["Value"] for t in inst.get("Tags", [])}
+                    name       = tags.get("Name", inst["InstanceId"])
+                    private_ip = inst.get("PrivateIpAddress", "")
+                    public_ip  = inst.get("PublicIpAddress", "")
+
+                    # Choose monitoring IP:
+                    # 1. Private IP if USE_PRIVATE_IP and it exists
+                    # 2. Public IP as fallback
+                    # 3. Empty string if neither available
+                    if USE_PRIVATE_IP and private_ip:
+                        monitor_ip = private_ip
+                    elif public_ip:
+                        monitor_ip = public_ip
+                    else:
+                        monitor_ip = ""
+
+                    endpoint = f"{monitor_ip}:{NODE_EXPORTER_PORT}" if monitor_ip else ""
+
                     services.append(DiscoveredService(
                         account_id=account.account_id, account_name=account.name,
                         region=region, service_type="ec2",
                         resource_id=inst["InstanceId"], resource_name=name,
-                        endpoint=f"{ip}:{NODE_EXPORTER_PORT}" if ip else "",
+                        endpoint=endpoint,
                         tags=tags,
-                        metadata={"instance_type": inst["InstanceType"], "az": inst["Placement"]["AvailabilityZone"], "private_ip": inst.get("PrivateIpAddress",""), "public_ip": inst.get("PublicIpAddress","")},
+                        metadata={
+                            "instance_type": inst["InstanceType"],
+                            "az":            inst["Placement"]["AvailabilityZone"],
+                            "private_ip":    private_ip,
+                            "public_ip":     public_ip,
+                            "monitor_ip":    monitor_ip,
+                            "state":         inst["State"]["Name"],
+                            "platform":      inst.get("Platform", "linux"),
+                        },
                     ))
         if services:
-            logger.info("    EC2: %d instances", len(services))
+            logger.info("    EC2: %d running instances found", len(services))
         return services
 
     # ── ECS ───────────────────────────────────────────────────────────
@@ -393,42 +422,87 @@ class MultiAccountDiscovery:
     # ── Prometheus Target Writer ──────────────────────────────────────
 
     def write_prometheus_targets(self, services: list[DiscoveredService]):
-        """Write per-account per-service Prometheus file-SD targets."""
+        """
+        Write Prometheus file-SD targets for all discovered EC2 instances.
+
+        ALL running EC2 instances are written to the targets file.
+        - If Node Exporter is reachable on port 9100 → marked reachable=True
+        - If Node Exporter is NOT reachable → still written, marked reachable=False
+          with a label 'node_exporter=missing' so you can filter in dashboards.
+          This way new instances appear immediately even before NE is installed.
+        """
         import socket
 
-        # Group EC2 targets (need reachability check for Node Exporter)
-        ec2_targets = []
-        for svc in services:
-            if svc.service_type == "ec2" and svc.endpoint:
-                try:
-                    host, port = svc.endpoint.rsplit(":", 1)
-                    sock = socket.create_connection((host, int(port)), timeout=CONNECT_TIMEOUT)
-                    sock.close()
-                    svc.reachable = True
-                    ec2_targets.append({
-                        "targets": [svc.endpoint],
-                        "labels": {
-                            "job":           "ec2-nodes",
-                            "instance":      svc.resource_name,
-                            "instance_id":   svc.resource_id,
-                            "instance_type": svc.metadata.get("instance_type",""),
-                            "account":       svc.account_name,
-                            "account_id":    svc.account_id,
-                            "region":        svc.region,
-                            "az":            svc.metadata.get("az",""),
-                            "env":           svc.tags.get("Environment", svc.tags.get("Env","production")),
-                            "monitored_by":  "auto-discovery",
-                        }
-                    })
-                except Exception:
-                    svc.reachable = False
+        ec2_instances = [s for s in services if s.service_type == "ec2"]
+        ec2_targets   = []
 
-        # Write EC2 targets file
-        ec2_file = f"{TARGETS_DIR}/ec2_nodes.yml"
-        self._write_yaml(ec2_file, ec2_targets,
-                         f"EC2 Node Exporter targets — {len(ec2_targets)} instances")
+        for svc in ec2_instances:
+            if not svc.endpoint:
+                logger.warning("  ⚠️  No IP for %s (%s) — skipping", svc.resource_name, svc.resource_id)
+                continue
 
-        logger.info("Wrote %d EC2 targets to %s", len(ec2_targets), ec2_file)
+            # Check if Node Exporter is reachable
+            try:
+                host, port = svc.endpoint.rsplit(":", 1)
+                sock = socket.create_connection((host, int(port)), timeout=CONNECT_TIMEOUT)
+                sock.close()
+                svc.reachable = True
+                ne_status = "installed"
+                logger.info("  ✅ NE reachable: %s (%s) → %s", svc.resource_name, svc.resource_id, svc.endpoint)
+            except Exception:
+                svc.reachable = False
+                ne_status = "missing"
+                logger.warning("  ⚠️  NE not reachable: %s (%s) → %s  [added anyway — install Node Exporter]",
+                               svc.resource_name, svc.resource_id, svc.endpoint)
+
+            # Determine OS — Windows uses port 9182 not 9100
+            platform = svc.metadata.get("platform", "linux")
+            is_windows = platform.lower() == "windows"
+
+            target_entry = {
+                "targets": [svc.endpoint],
+                "labels": {
+                    "job":              "ec2-nodes",
+                    "instance":         svc.resource_name,
+                    "instance_id":      svc.resource_id,
+                    "instance_type":    svc.metadata.get("instance_type", ""),
+                    "account":          svc.account_name,
+                    "account_id":       svc.account_id,
+                    "region":           svc.region,
+                    "az":               svc.metadata.get("az", ""),
+                    "os":               "windows" if is_windows else "linux",
+                    "private_ip":       svc.metadata.get("private_ip", ""),
+                    "public_ip":        svc.metadata.get("public_ip", ""),
+                    "node_exporter":    ne_status,
+                    "env":              svc.tags.get("Environment", svc.tags.get("Env", "production")),
+                    "monitored_by":     "auto-discovery",
+                }
+            }
+            ec2_targets.append(target_entry)
+
+        # Write ALL instances — reachable and unreachable
+        self._write_yaml(
+            EC2_TARGETS_FILE,
+            ec2_targets,
+            f"EC2 targets — {len(ec2_targets)} instances "
+            f"({sum(1 for s in ec2_instances if s.reachable)} with Node Exporter, "
+            f"{sum(1 for s in ec2_instances if not s.reachable)} pending install)"
+        )
+
+        reachable_count   = sum(1 for s in ec2_instances if s.reachable)
+        unreachable_count = sum(1 for s in ec2_instances if not s.reachable)
+        logger.info("✅ Wrote %d EC2 targets to %s", len(ec2_targets), EC2_TARGETS_FILE)
+        logger.info("   %d with Node Exporter UP | %d pending Node Exporter install",
+                    reachable_count, unreachable_count)
+
+        if unreachable_count > 0:
+            logger.warning("⚠️  %d instance(s) need Node Exporter installed:", unreachable_count)
+            for svc in ec2_instances:
+                if not svc.reachable:
+                    logger.warning("   → %s (%s) at %s",
+                                   svc.resource_name, svc.resource_id, svc.endpoint)
+                    logger.warning("     Run: bash scripts/install-node-exporter.sh %s",
+                                   svc.metadata.get("public_ip") or svc.metadata.get("private_ip"))
 
     def _write_yaml(self, filepath: str, data: list, comment: str = ""):
         os.makedirs(os.path.dirname(filepath), exist_ok=True)

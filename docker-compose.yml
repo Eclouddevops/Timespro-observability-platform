@@ -221,6 +221,8 @@ services:
       - SSH_USER=${SSH_USER:-ubuntu}
       - MSTEAMS_WEBHOOK_URL=${MSTEAMS_WEBHOOK_URL:-}
       - EC2_TARGETS_FILE=/etc/prometheus/targets/ec2_nodes.yml
+      - TARGETS_DIR=/etc/prometheus/targets
+      - INCLUDE_UNREACHABLE_INSTANCES=true
     volumes:
       # Share Prometheus targets directory so agent can write directly
       - ./prometheus/targets:/etc/prometheus/targets
