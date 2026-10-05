@@ -163,7 +163,7 @@ services:
     ports:
       - "9106:9106"
     volumes:
-      - ./exporters/cloudwatch/config.yml:/config/config.yml:ro
+      - ./exporters/cloudwatch/config.yml:/config/config.yml
     environment:
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
     networks:
@@ -220,15 +220,18 @@ services:
       - SSH_KEY_PATH=/secrets/ec2-key.pem
       - SSH_USER=${SSH_USER:-ubuntu}
       - MSTEAMS_WEBHOOK_URL=${MSTEAMS_WEBHOOK_URL:-}
-      - EC2_TARGETS_FILE=/etc/prometheus/targets/ec2_nodes.yml
+      - CW_CONFIG_FILE=/config/config.yml
       - TARGETS_DIR=/etc/prometheus/targets
       - INCLUDE_UNREACHABLE_INSTANCES=true
-      - CW_CONFIG_FILE=/etc/cloudwatch/config.yml
     volumes:
       # Share Prometheus targets directory so agent can write directly
       - ./prometheus/targets:/etc/prometheus/targets
       # Share CloudWatch config so agent can update it dynamically
-      - ./exporters/cloudwatch:/etc/cloudwatch
+      - ./exporters/cloudwatch:/config
+      # Docker socket so agent can restart cloudwatch-exporter on config change
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Mount SSH key for auto Node Exporter install (optional)
+      - ${SSH_KEY_PATH:-/dev/null}:/secrets/ec2-key.pem:ro
       # Mount SSH key for auto Node Exporter install (optional)
       - ${SSH_KEY_PATH:-/dev/null}:/secrets/ec2-key.pem:ro
     networks:

@@ -35,7 +35,7 @@ import yaml
 logger = logging.getLogger(__name__)
 
 TARGETS_DIR    = os.getenv("TARGETS_DIR", "/etc/prometheus/targets")
-CW_CONFIG_FILE = os.getenv("CW_CONFIG_FILE", "/etc/cloudwatch/config.yml")
+CW_CONFIG_FILE = os.getenv("CW_CONFIG_FILE", "/config/config.yml")
 REGION         = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
 ALL_REGIONS    = [r.strip() for r in os.getenv("AWS_REGIONS", REGION).split(",") if r.strip()]
 TAG_FILTER_KEY = os.getenv("TAG_FILTER_KEY", "")

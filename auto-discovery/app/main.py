@@ -95,6 +95,26 @@ async def reload_prometheus():
         logger.error("Prometheus reload failed: %s", e)
 
 
+async def restart_cloudwatch_exporter():
+    """Restart cloudwatch-exporter so it picks up new config."""
+    try:
+        loop = asyncio.get_event_loop()
+        import subprocess
+        result = await loop.run_in_executor(
+            None,
+            lambda: subprocess.run(
+                ["docker", "restart", "cloudwatch-exporter"],
+                capture_output=True, text=True, timeout=30
+            )
+        )
+        if result.returncode == 0:
+            logger.info("✅ CloudWatch Exporter restarted — new instance metrics loading")
+        else:
+            logger.warning("CloudWatch restart: %s", result.stderr[:100])
+    except Exception as e:
+        logger.warning("Could not restart cloudwatch-exporter: %s", e)
+
+
 async def notify_teams(added: list, removed: list, total: int):
     if not MSTEAMS_WEBHOOK or (not added and not removed):
         return
@@ -179,7 +199,12 @@ async def run_sync_cycle():
 
         # Write targets + CloudWatch config
         await loop.run_in_executor(None, write_instance_targets, instances)
-        await loop.run_in_executor(None, write_cloudwatch_config, instances)
+
+        # Only update CloudWatch config and restart exporter if instance list changed
+        if newly_added or newly_removed or run_count == 1:
+            await loop.run_in_executor(None, write_cloudwatch_config, instances)
+            await restart_cloudwatch_exporter()
+            logger.info("CloudWatch config updated and exporter restarted")
 
         # Hot-reload Prometheus
         await reload_prometheus()
