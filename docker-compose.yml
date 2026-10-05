@@ -9,8 +9,12 @@ volumes:
   grafana_data:
   alertmanager_data:
   loki_data:
+  # Shared textfile directory: auto-discovery writes .prom files here,
+  # node-exporter reads them and exposes as metrics to Prometheus
+  ec2_textfiles:
 
 services:
+
   # ─────────────────────────────────────────────
   # PROMETHEUS
   # ─────────────────────────────────────────────
@@ -22,7 +26,7 @@ services:
     ports:
       - "9090:9090"
     extra_hosts:
-      - "host.docker.internal:172.18.0.1"   # custom bridge gateway = host
+      - "host.docker.internal:172.18.0.1"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/rules:/etc/prometheus/rules:ro
@@ -73,11 +77,6 @@ services:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-ChangeMe2024!}
       - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-http://localhost:3000}
-      - GF_SMTP_ENABLED=${SMTP_ENABLED:-false}
-      - GF_SMTP_HOST=${SMTP_HOST:-}
-      - GF_SMTP_USER=${SMTP_USER:-}
-      - GF_SMTP_PASSWORD=${SMTP_PASSWORD:-}
-      - GF_SMTP_FROM_ADDRESS=${SMTP_FROM:-grafana@example.com}
       - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-piechart-panel,grafana-worldmap-panel,grafana-polystat-panel
       - GF_FEATURE_TOGGLES_ENABLE=publicDashboards
       - GF_ANALYTICS_REPORTING_ENABLED=false
@@ -93,7 +92,7 @@ services:
       - loki
 
   # ─────────────────────────────────────────────
-  # LOKI (Log Aggregation)
+  # LOKI
   # ─────────────────────────────────────────────
   loki:
     image: grafana/loki:2.9.5
@@ -109,7 +108,7 @@ services:
       - monitoring
 
   # ─────────────────────────────────────────────
-  # PROMTAIL (Log Shipper)
+  # PROMTAIL
   # ─────────────────────────────────────────────
   promtail:
     image: grafana/promtail:2.9.5
@@ -126,15 +125,34 @@ services:
       - loki
 
   # ─────────────────────────────────────────────
-  # NODE EXPORTER
-  # NOTE: Node Exporter is installed directly on the HOST (not Docker).
-  # The install.sh script set it up as a systemd service on port 9100.
-  # Prometheus reaches it via the Docker bridge gateway 172.17.0.1:9100
-  # No container needed here.
+  # NODE EXPORTER (Docker container version)
+  # Runs as container — mounts textfile dir so
+  # auto-discovery metrics are exposed automatically
   # ─────────────────────────────────────────────
+  node-exporter:
+    image: prom/node-exporter:v1.7.0
+    container_name: node-exporter
+    restart: unless-stopped
+    pid: host
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+      # EC2 metrics textfile — auto-discovery writes here
+      - ec2_textfiles:/textfiles:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+      - '--collector.textfile.directory=/textfiles'
+    networks:
+      - monitoring
 
   # ─────────────────────────────────────────────
-  # CADVISOR (Container Metrics)
+  # CADVISOR
   # ─────────────────────────────────────────────
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
@@ -153,8 +171,7 @@ services:
       - monitoring
 
   # ─────────────────────────────────────────────
-  # CLOUDWATCH EXPORTER
-  # Uses EC2 IAM Instance Profile — NO static credentials needed.
+  # CLOUDWATCH EXPORTER (kept for ECS/Lambda/RDS)
   # ─────────────────────────────────────────────
   cloudwatch-exporter:
     image: prom/cloudwatch-exporter:latest
@@ -163,7 +180,7 @@ services:
     ports:
       - "9106:9106"
     volumes:
-      - ./exporters/cloudwatch/config.yml:/config/config.yml
+      - ./exporters/cloudwatch/config.yml:/config/config.yml:ro
     environment:
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
     networks:
@@ -171,8 +188,6 @@ services:
 
   # ─────────────────────────────────────────────
   # ALERTMANAGER MS TEAMS PROXY
-  # Converts Prometheus alerts → MS Teams Adaptive Cards
-  # Alertmanager webhooks → this proxy → MS Teams channel
   # ─────────────────────────────────────────────
   alertmanager-msteams:
     image: bzon/prometheus-msteams:latest
@@ -181,7 +196,7 @@ services:
     ports:
       - "2000:2000"
     environment:
-      - TEAMS_INCOMING_WEBHOOK_URL=${MSTEAMS_WEBHOOK_URL}
+      - TEAMS_INCOMING_WEBHOOK_URL=${MSTEAMS_WEBHOOK_URL:-}
       - TEAMS_REQUEST_TIMEOUT=30s
     volumes:
       - ./alertmanager/msteams-config.yml:/etc/alertmanager-msteams/config.yml:ro
@@ -193,10 +208,17 @@ services:
       - alertmanager
 
   # ─────────────────────────────────────────────
-  # EC2 AUTO-DISCOVERY AGENT
-  # Automatically detects new EC2 instances and
-  # updates Prometheus targets every 2 minutes.
-  # Requires IAM role with ec2:DescribeInstances
+  # EC2 AUTO-DISCOVERY AGENT v4
+  #
+  # Every 2 minutes:
+  #   1. Calls AWS EC2 API → finds ALL instances
+  #   2. Calls CloudWatch → gets CPU/Network/Status
+  #   3. Writes /textfiles/ec2_metrics.prom
+  #   4. Node Exporter reads textfile → Prometheus scrapes it
+  #   5. Dashboard shows all instances automatically
+  #
+  # No SSH. No Node Exporter on target instances.
+  # New instances appear in dashboard in < 2 minutes.
   # ─────────────────────────────────────────────
   auto-discovery:
     build:
@@ -207,40 +229,24 @@ services:
     ports:
       - "9877:9877"
     environment:
-      - PROMETHEUS_URL=http://prometheus:9090
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
       - AWS_REGIONS=${AWS_REGIONS:-us-east-1}
       - DISCOVERY_INTERVAL_MINUTES=${DISCOVERY_INTERVAL_MINUTES:-2}
-      - NODE_EXPORTER_PORT=9100
-      - CONNECT_TIMEOUT_SEC=3
-      - USE_PRIVATE_IP=${USE_PRIVATE_IP:-true}
+      - PRIMARY_ACCOUNT_NAME=${PRIMARY_ACCOUNT_NAME:-production}
       - TAG_FILTER_KEY=${TAG_FILTER_KEY:-}
       - TAG_FILTER_VALUE=${TAG_FILTER_VALUE:-true}
-      - AUTO_INSTALL_NODE_EXPORTER=${AUTO_INSTALL_NODE_EXPORTER:-false}
-      - SSH_KEY_PATH=/secrets/ec2-key.pem
-      - SSH_USER=${SSH_USER:-ubuntu}
       - MSTEAMS_WEBHOOK_URL=${MSTEAMS_WEBHOOK_URL:-}
-      - CW_CONFIG_FILE=/config/config.yml
-      - TARGETS_DIR=/etc/prometheus/targets
-      - INCLUDE_UNREACHABLE_INSTANCES=true
+      - PROM_TEXTFILE_DIR=/textfiles
     volumes:
-      # Share Prometheus targets directory so agent can write directly
-      - ./prometheus/targets:/etc/prometheus/targets
-      # Share CloudWatch config so agent can update it dynamically
-      - ./exporters/cloudwatch:/config
-      # Docker socket so agent can restart cloudwatch-exporter on config change
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      # Mount SSH key for auto Node Exporter install (optional)
-      - ${SSH_KEY_PATH:-/dev/null}:/secrets/ec2-key.pem:ro
-      # Mount SSH key for auto Node Exporter install (optional)
-      - ${SSH_KEY_PATH:-/dev/null}:/secrets/ec2-key.pem:ro
+      # Shared with node-exporter — discovery writes, NE reads
+      - ec2_textfiles:/textfiles
     networks:
       - monitoring
     depends_on:
-      - prometheus
+      - node-exporter
 
   # ─────────────────────────────────────────────
-  # BLACKBOX EXPORTER (URL / SSL Monitoring)
+  # BLACKBOX EXPORTER
   # ─────────────────────────────────────────────
   blackbox-exporter:
     image: prom/blackbox-exporter:v0.24.0
@@ -254,7 +260,7 @@ services:
       - monitoring
 
   # ─────────────────────────────────────────────
-  # SSL EXPORTER (Certificate Expiry)
+  # SSL EXPORTER
   # ─────────────────────────────────────────────
   ssl-exporter:
     image: ribbybibby/ssl-exporter:latest
@@ -279,7 +285,6 @@ services:
     environment:
       - PROMETHEUS_URL=http://prometheus:9090
       - GRAFANA_URL=http://grafana:3000
-      - GRAFANA_API_KEY=${GRAFANA_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - MSTEAMS_WEBHOOK_URL=${MSTEAMS_WEBHOOK_URL:-}

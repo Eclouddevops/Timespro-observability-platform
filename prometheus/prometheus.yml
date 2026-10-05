@@ -1,6 +1,6 @@
 global:
-  scrape_interval: 60s
-  evaluation_interval: 60s
+  scrape_interval: 30s
+  evaluation_interval: 30s
   external_labels:
     monitor: 'observability-platform'
     environment: 'production'
@@ -13,83 +13,35 @@ alerting:
 rule_files:
   - /etc/prometheus/rules/*.yml
 
-# ═══════════════════════════════════════════════════════
-# SCRAPE CONFIGS
-# ═══════════════════════════════════════════════════════
 scrape_configs:
 
-  # ── Prometheus Self Monitoring ──────────────────────
+  # ── Prometheus self ──────────────────────────────────────────────
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
-        labels:
-          service: prometheus
-          env: production
 
-  # ── Node Exporter — observability-server (Linux host) ─
-  # Runs directly on host as systemd service, not in Docker.
-  # 172.18.0.1 = Docker bridge gateway = host IP from inside containers.
+  # ── Node Exporter (container) ────────────────────────────────────
+  # Scrapes host metrics + ec2_metrics.prom textfile
+  # This is the KEY job — ec2_* metrics come from here
   - job_name: 'node-exporter'
     static_configs:
-      - targets: ['172.18.0.1:9100']
+      - targets: ['node-exporter:9100']
         labels:
           instance: 'observability-server'
-          service: 'node-exporter'
-          os: 'linux'
-          env: production
 
-  # ── File-based discovery — additional Linux EC2 nodes ─
-  # Auto-discovery agent writes to this file every 2 minutes
-  # Both private IPs (same VPC) and public IPs (cross-VPC) supported
-  - job_name: 'ec2-nodes'
-    file_sd_configs:
-      - files:
-          - /etc/prometheus/targets/ec2_nodes.yml
-        refresh_interval: 15s
-
-  # ── EC2 Inventory (Zero Touch — no Node Exporter needed) ──────────
-  # Auto-discovery writes all instances here — new EC2s appear in
-  # dashboard within 2 minutes of being launched, no setup needed.
-  # Metrics come from CloudWatch (CPU, Network, StatusCheck).
-  - job_name: 'ec2-inventory'
-    file_sd_configs:
-      - files:
-          - /etc/prometheus/targets/ec2_inventory.yml
-        refresh_interval: 15s
-    static_configs: []
-
-  # ── Windows Exporter — Windows EC2 instances ──────────
-  # Windows Exporter (port 9182) replaces Node Exporter on Windows.
-  # Must be installed on each Windows instance — see docs/windows-setup.md
-  - job_name: 'windows-exporter'
-    file_sd_configs:
-      - files:
-          - /etc/prometheus/targets/windows_nodes.yml
-        refresh_interval: 30s
-    metrics_path: /metrics
-    relabel_configs:
-      - source_labels: [__address__]
-        regex: '(.*):.*'
-        target_label: instance
-        replacement: '$1'
-
-  # ── cAdvisor (Container Metrics) ─────────────────────
+  # ── cAdvisor ─────────────────────────────────────────────────────
   - job_name: 'cadvisor'
     static_configs:
       - targets: ['cadvisor:8080']
-        labels:
-          service: 'cadvisor'
 
-  # ── AWS CloudWatch (ECS/EC2/Lambda/API GW/WAF) ───────
-  # CloudWatch data has 5-min resolution — scrape every 5 min
-  # metrics_path /metrics is the default for this exporter
+  # ── CloudWatch Exporter (ECS, Lambda, RDS, API GW) ───────────────
   - job_name: 'cloudwatch'
     scrape_interval: 60s
-    scrape_timeout:  55s
+    scrape_timeout: 55s
     static_configs:
       - targets: ['cloudwatch-exporter:9106']
 
-  # ── Blackbox Exporter (HTTP/HTTPS endpoints) ─────────
+  # ── Blackbox HTTP probing ─────────────────────────────────────────
   - job_name: 'blackbox-http'
     metrics_path: /probe
     params:
@@ -106,7 +58,7 @@ scrape_configs:
       - target_label: __address__
         replacement: blackbox-exporter:9115
 
-  # ── SSL Certificate Expiry ────────────────────────────
+  # ── SSL Certificate Expiry ────────────────────────────────────────
   - job_name: 'ssl-certificates'
     metrics_path: /probe
     params:
@@ -123,7 +75,14 @@ scrape_configs:
       - target_label: __address__
         replacement: ssl-exporter:9219
 
-  # ── Blackbox ICMP Ping ────────────────────────────────
+  # ── Windows Exporter ──────────────────────────────────────────────
+  - job_name: 'windows-exporter'
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/windows_nodes.yml
+        refresh_interval: 30s
+
+  # ── Blackbox ICMP Ping ────────────────────────────────────────────
   - job_name: 'blackbox-ping'
     metrics_path: /probe
     params:
@@ -140,21 +99,17 @@ scrape_configs:
       - target_label: __address__
         replacement: blackbox-exporter:9115
 
-  # ── Grafana ───────────────────────────────────────────
+  # ── Grafana ───────────────────────────────────────────────────────
   - job_name: 'grafana'
     static_configs:
       - targets: ['grafana:3000']
 
-  # ── AI Observability Agent ────────────────────────────
+  # ── AI Agent ─────────────────────────────────────────────────────
   - job_name: 'ai-agent'
     static_configs:
       - targets: ['ai-observability-agent:8888']
-        labels:
-          service: 'ai-observability-agent'
 
-  # ── EC2 Auto-Discovery Agent ──────────────────────────
+  # ── Auto-Discovery Agent ─────────────────────────────────────────
   - job_name: 'auto-discovery'
     static_configs:
       - targets: ['ec2-auto-discovery:9877']
-        labels:
-          service: 'ec2-auto-discovery'
