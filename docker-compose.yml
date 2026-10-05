@@ -9,8 +9,6 @@ volumes:
   grafana_data:
   alertmanager_data:
   loki_data:
-  # Shared textfile directory: auto-discovery writes .prom files here,
-  # node-exporter reads them and exposes as metrics to Prometheus
   ec2_textfiles:
 
 services:
@@ -25,18 +23,17 @@ services:
     user: root
     ports:
       - "9090:9090"
-    extra_hosts:
-      - "host.docker.internal:172.18.0.1"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/rules:/etc/prometheus/rules:ro
       - ./prometheus/targets:/etc/prometheus/targets:ro
       - prometheus_data:/prometheus
+      # Mount textfiles so Prometheus can read them directly
+      - ec2_textfiles:/ec2_textfiles:ro
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--storage.tsdb.retention.time=30d'
-      - '--storage.tsdb.retention.size=20GB'
       - '--web.enable-lifecycle'
       - '--web.enable-admin-api'
       - '--web.console.libraries=/etc/prometheus/console_libraries'
@@ -77,8 +74,7 @@ services:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-ChangeMe2024!}
       - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-http://localhost:3000}
-      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-piechart-panel,grafana-worldmap-panel,grafana-polystat-panel
-      - GF_FEATURE_TOGGLES_ENABLE=publicDashboards
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-piechart-panel,grafana-worldmap-panel
       - GF_ANALYTICS_REPORTING_ENABLED=false
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
@@ -89,7 +85,6 @@ services:
       - monitoring
     depends_on:
       - prometheus
-      - loki
 
   # ─────────────────────────────────────────────
   # LOKI
@@ -125,9 +120,10 @@ services:
       - loki
 
   # ─────────────────────────────────────────────
-  # NODE EXPORTER (Docker container version)
-  # Runs as container — mounts textfile dir so
-  # auto-discovery metrics are exposed automatically
+  # NODE EXPORTER — host metrics only
+  # NOTE: Port 9100 used by host systemd service.
+  # We map to port 9101 on host to avoid conflict.
+  # Prometheus scrapes via container name (internal port 9100).
   # ─────────────────────────────────────────────
   node-exporter:
     image: prom/node-exporter:v1.7.0
@@ -135,12 +131,11 @@ services:
     restart: unless-stopped
     pid: host
     ports:
-      - "9100:9100"
+      - "9101:9100"
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /:/rootfs:ro
-      # EC2 metrics textfile — auto-discovery writes here
       - ec2_textfiles:/textfiles:ro
     command:
       - '--path.procfs=/host/proc'
@@ -171,7 +166,8 @@ services:
       - monitoring
 
   # ─────────────────────────────────────────────
-  # CLOUDWATCH EXPORTER (kept for ECS/Lambda/RDS)
+  # CLOUDWATCH EXPORTER
+  # Already working — has aws_ec2_* metrics
   # ─────────────────────────────────────────────
   cloudwatch-exporter:
     image: prom/cloudwatch-exporter:latest
@@ -209,16 +205,8 @@ services:
 
   # ─────────────────────────────────────────────
   # EC2 AUTO-DISCOVERY AGENT v4
-  #
-  # Every 2 minutes:
-  #   1. Calls AWS EC2 API → finds ALL instances
-  #   2. Calls CloudWatch → gets CPU/Network/Status
-  #   3. Writes /textfiles/ec2_metrics.prom
-  #   4. Node Exporter reads textfile → Prometheus scrapes it
-  #   5. Dashboard shows all instances automatically
-  #
-  # No SSH. No Node Exporter on target instances.
-  # New instances appear in dashboard in < 2 minutes.
+  # Writes ec2_metrics.prom to shared volume
+  # node-exporter reads it via textfile collector
   # ─────────────────────────────────────────────
   auto-discovery:
     build:
@@ -238,12 +226,9 @@ services:
       - MSTEAMS_WEBHOOK_URL=${MSTEAMS_WEBHOOK_URL:-}
       - PROM_TEXTFILE_DIR=/textfiles
     volumes:
-      # Shared with node-exporter — discovery writes, NE reads
       - ec2_textfiles:/textfiles
     networks:
       - monitoring
-    depends_on:
-      - node-exporter
 
   # ─────────────────────────────────────────────
   # BLACKBOX EXPORTER
