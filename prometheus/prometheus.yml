@@ -47,6 +47,17 @@ scrape_configs:
           - /etc/prometheus/targets/ec2_nodes.yml
         refresh_interval: 15s
 
+  # ── EC2 Inventory (Zero Touch — no Node Exporter needed) ──────────
+  # Auto-discovery writes all instances here — new EC2s appear in
+  # dashboard within 2 minutes of being launched, no setup needed.
+  # Metrics come from CloudWatch (CPU, Network, StatusCheck).
+  - job_name: 'ec2-inventory'
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/ec2_inventory.yml
+        refresh_interval: 15s
+    static_configs: []
+
   # ── Windows Exporter — Windows EC2 instances ──────────
   # Windows Exporter (port 9182) replaces Node Exporter on Windows.
   # Must be installed on each Windows instance — see docs/windows-setup.md

@@ -223,9 +223,12 @@ services:
       - EC2_TARGETS_FILE=/etc/prometheus/targets/ec2_nodes.yml
       - TARGETS_DIR=/etc/prometheus/targets
       - INCLUDE_UNREACHABLE_INSTANCES=true
+      - CW_CONFIG_FILE=/etc/cloudwatch/config.yml
     volumes:
       # Share Prometheus targets directory so agent can write directly
       - ./prometheus/targets:/etc/prometheus/targets
+      # Share CloudWatch config so agent can update it dynamically
+      - ./exporters/cloudwatch:/etc/cloudwatch
       # Mount SSH key for auto Node Exporter install (optional)
       - ${SSH_KEY_PATH:-/dev/null}:/secrets/ec2-key.pem:ro
     networks:
