@@ -1,17 +1,8 @@
-# ═══════════════════════════════════════════════════════════════════════
-# CloudWatch Exporter Configuration
-# Exports AWS CloudWatch metrics to Prometheus format
-#
-# Supports multiple AWS accounts via cross-account IAM roles.
-# Set AWS credentials via environment variables or IAM instance profile.
-# ═══════════════════════════════════════════════════════════════════════
-
 region: us-east-1
 metrics:
 
-  # ──────────────────────────────────────────────────────────────────
-  # EC2 Metrics
-  # ──────────────────────────────────────────────────────────────────
+  # ── EC2 — works for ALL instances, no agent needed ─────────────────
+  # Period 300 = 5 min (free tier). Use 60 for detailed monitoring (paid)
   - aws_namespace: AWS/EC2
     aws_metric_name: CPUUtilization
     aws_dimensions: [InstanceId]
@@ -36,15 +27,35 @@ metrics:
     aws_statistics: [Sum]
     period_seconds: 60
 
-  # ──────────────────────────────────────────────────────────────────
-  # ECS Metrics
-  # ──────────────────────────────────────────────────────────────────
+  - aws_namespace: AWS/EC2
+    aws_metric_name: StatusCheckFailed_Instance
+    aws_dimensions: [InstanceId]
+    aws_statistics: [Sum]
+    period_seconds: 60
+
+  - aws_namespace: AWS/EC2
+    aws_metric_name: StatusCheckFailed_System
+    aws_dimensions: [InstanceId]
+    aws_statistics: [Sum]
+    period_seconds: 60
+
+  - aws_namespace: AWS/EC2
+    aws_metric_name: EBSReadBytes
+    aws_dimensions: [InstanceId]
+    aws_statistics: [Sum]
+    period_seconds: 300
+
+  - aws_namespace: AWS/EC2
+    aws_metric_name: EBSWriteBytes
+    aws_dimensions: [InstanceId]
+    aws_statistics: [Sum]
+    period_seconds: 300
+
+  # ── ECS ─────────────────────────────────────────────────────────────
   - aws_namespace: AWS/ECS
     aws_metric_name: CPUUtilization
     aws_dimensions: [ClusterName, ServiceName]
     aws_statistics: [Average, Maximum]
-    aws_dimension_select_regex:
-      ClusterName: '.*'
     period_seconds: 300
 
   - aws_namespace: AWS/ECS
@@ -53,26 +64,11 @@ metrics:
     aws_statistics: [Average, Maximum]
     period_seconds: 300
 
-  - aws_namespace: AWS/ECS
-    aws_metric_name: RunningTaskCount
-    aws_dimensions: [ClusterName, ServiceName]
-    aws_statistics: [Average, Minimum]
-    period_seconds: 60
-
-  - aws_namespace: AWS/ECS
-    aws_metric_name: PendingTaskCount
-    aws_dimensions: [ClusterName, ServiceName]
-    aws_statistics: [Average]
-    period_seconds: 60
-
-  # ──────────────────────────────────────────────────────────────────
-  # Lambda Metrics
-  # ──────────────────────────────────────────────────────────────────
+  # ── Lambda ───────────────────────────────────────────────────────────
   - aws_namespace: AWS/Lambda
     aws_metric_name: Invocations
     aws_dimensions: [FunctionName]
     aws_statistics: [Sum]
-    aws_extended_statistics: [p50, p95, p99]
     period_seconds: 60
 
   - aws_namespace: AWS/Lambda
@@ -85,7 +81,6 @@ metrics:
     aws_metric_name: Duration
     aws_dimensions: [FunctionName]
     aws_statistics: [Average, Maximum]
-    aws_extended_statistics: [p99]
     period_seconds: 60
 
   - aws_namespace: AWS/Lambda
@@ -94,21 +89,7 @@ metrics:
     aws_statistics: [Sum]
     period_seconds: 60
 
-  - aws_namespace: AWS/Lambda
-    aws_metric_name: ConcurrentExecutions
-    aws_dimensions: [FunctionName]
-    aws_statistics: [Maximum]
-    period_seconds: 60
-
-  - aws_namespace: AWS/Lambda
-    aws_metric_name: IteratorAge
-    aws_dimensions: [FunctionName, Resource]
-    aws_statistics: [Maximum]
-    period_seconds: 60
-
-  # ──────────────────────────────────────────────────────────────────
-  # API Gateway (REST)
-  # ──────────────────────────────────────────────────────────────────
+  # ── API Gateway ──────────────────────────────────────────────────────
   - aws_namespace: AWS/ApiGateway
     aws_metric_name: Count
     aws_dimensions: [ApiName, Stage]
@@ -130,68 +111,10 @@ metrics:
   - aws_namespace: AWS/ApiGateway
     aws_metric_name: Latency
     aws_dimensions: [ApiName, Stage]
-    aws_statistics: [Average, Maximum]
-    aws_extended_statistics: [p99]
-    period_seconds: 60
-
-  - aws_namespace: AWS/ApiGateway
-    aws_metric_name: IntegrationLatency
-    aws_dimensions: [ApiName, Stage]
     aws_statistics: [Average]
     period_seconds: 60
 
-  # API Gateway v2 (HTTP)
-  - aws_namespace: AWS/ApiGateway
-    aws_metric_name: Count
-    aws_dimensions: [ApiId, Stage]
-    aws_statistics: [Sum]
-    period_seconds: 60
-
-  # ──────────────────────────────────────────────────────────────────
-  # Auto Scaling Groups
-  # ──────────────────────────────────────────────────────────────────
-  - aws_namespace: AWS/AutoScaling
-    aws_metric_name: GroupInServiceInstances
-    aws_dimensions: [AutoScalingGroupName]
-    aws_statistics: [Average, Minimum]
-    period_seconds: 300
-
-  - aws_namespace: AWS/AutoScaling
-    aws_metric_name: GroupDesiredCapacity
-    aws_dimensions: [AutoScalingGroupName]
-    aws_statistics: [Average]
-    period_seconds: 300
-
-  - aws_namespace: AWS/AutoScaling
-    aws_metric_name: GroupPendingInstances
-    aws_dimensions: [AutoScalingGroupName]
-    aws_statistics: [Average]
-    period_seconds: 300
-
-  - aws_namespace: AWS/AutoScaling
-    aws_metric_name: GroupTerminatingInstances
-    aws_dimensions: [AutoScalingGroupName]
-    aws_statistics: [Average]
-    period_seconds: 300
-
-  # ──────────────────────────────────────────────────────────────────
-  # WAF v2
-  # ──────────────────────────────────────────────────────────────────
-  - aws_namespace: AWS/WAFV2
-    aws_metric_name: AllowedRequests
-    aws_dimensions: [WebACL, Region, Rule]
-    aws_statistics: [Sum]
-    period_seconds: 300
-
-  - aws_namespace: AWS/WAFV2
-    aws_metric_name: BlockedRequests
-    aws_dimensions: [WebACL, Region, Rule]
-    aws_statistics: [Sum]
-    period_seconds: 300
-
-  # ──────────────────────────────────────────────────────────────────
-  # ALB / ELB
-  # ──────────────────────────────────────────────────────────────────
+  # ── ALB ─────────────────────────────────────────────────────────────
   - aws_namespace: AWS/ApplicationELB
     aws_metric_name: RequestCount
     aws_dimensions: [LoadBalancer]
@@ -214,24 +137,9 @@ metrics:
     aws_metric_name: TargetResponseTime
     aws_dimensions: [LoadBalancer]
     aws_statistics: [Average]
-    aws_extended_statistics: [p99]
     period_seconds: 60
 
-  - aws_namespace: AWS/ApplicationELB
-    aws_metric_name: HealthyHostCount
-    aws_dimensions: [LoadBalancer, TargetGroup]
-    aws_statistics: [Average, Minimum]
-    period_seconds: 60
-
-  - aws_namespace: AWS/ApplicationELB
-    aws_metric_name: UnHealthyHostCount
-    aws_dimensions: [LoadBalancer, TargetGroup]
-    aws_statistics: [Average, Maximum]
-    period_seconds: 60
-
-  # ──────────────────────────────────────────────────────────────────
-  # RDS
-  # ──────────────────────────────────────────────────────────────────
+  # ── RDS ─────────────────────────────────────────────────────────────
   - aws_namespace: AWS/RDS
     aws_metric_name: CPUUtilization
     aws_dimensions: [DBInstanceIdentifier]
@@ -239,28 +147,14 @@ metrics:
     period_seconds: 300
 
   - aws_namespace: AWS/RDS
-    aws_metric_name: FreeStorageSpace
-    aws_dimensions: [DBInstanceIdentifier]
-    aws_statistics: [Average]
-    period_seconds: 300
-
-  - aws_namespace: AWS/RDS
     aws_metric_name: DatabaseConnections
     aws_dimensions: [DBInstanceIdentifier]
-    aws_statistics: [Average, Maximum]
+    aws_statistics: [Average]
     period_seconds: 60
 
-  # ──────────────────────────────────────────────────────────────────
-  # SQS
-  # ──────────────────────────────────────────────────────────────────
+  # ── SQS ─────────────────────────────────────────────────────────────
   - aws_namespace: AWS/SQS
     aws_metric_name: ApproximateNumberOfMessagesVisible
     aws_dimensions: [QueueName]
-    aws_statistics: [Average, Maximum]
-    period_seconds: 60
-
-  - aws_namespace: AWS/SQS
-    aws_metric_name: ApproximateAgeOfOldestMessage
-    aws_dimensions: [QueueName]
-    aws_statistics: [Maximum]
+    aws_statistics: [Average]
     period_seconds: 60
