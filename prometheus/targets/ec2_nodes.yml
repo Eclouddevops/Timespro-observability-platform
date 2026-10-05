@@ -1,19 +1,27 @@
-# ── EC2 Node Exporter targets ─────────────────────────────────────
-# Add your EC2 instances here. Node Exporter must be installed on each.
-# Port 9100 must be open in the security group for this Prometheus server.
-#
-# Usage:
-#   - targets: ['<private-ip>:9100']   # use private IP if in same VPC
-#   - targets: ['<public-ip>:9100']    # use public IP if external
-#
-# Recommended: Use AWS Systems Manager or Ansible to auto-update this file.
-# ─────────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════
+# EC2 Node Exporter Targets
+# Auto-updated by auto-discovery agent every 2 minutes
+# Manual entries below as fallback
+# ══════════════════════════════════════════════════════════════════════
 
+# ── observability-server (i-0b7b07809dc9007ac) ─────────────────────
+# Node Exporter runs on HOST (not Docker) via 172.18.0.1 gateway
+# Handled by node-exporter job in prometheus.yml — NOT here
+
+# ── Monitoring instance (i-0931669571a326fd4) ──────────────────────
 - targets:
-    # - '10.0.1.100:9100'   # web-server-01 (us-east-1a)
-    # - '10.0.1.101:9100'   # web-server-02 (us-east-1b)
-    # - '10.0.2.50:9100'    # db-server-01
+    - '54.92.186.206:9100'
   labels:
+    instance: 'Monitoring'
+    instance_id: 'i-0931669571a326fd4'
+    instance_type: 't3.micro'
     env: production
     region: us-east-1
-    service: ec2
+    az: us-east-1d
+    os: linux
+    public_ip: '54.92.186.206'
+    monitored_by: manual
+
+# ── windows-server (i-00baf21d89dfb8504) ──────────────────────────
+# Windows Exporter on port 9182 — handled by windows-exporter job
+# See prometheus/targets/windows_nodes.yml

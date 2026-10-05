@@ -221,6 +221,73 @@ async def shutdown():
 
 # ── Routes ────────────────────────────────────────────────────────────
 
+@app.get("/debug")
+async def debug():
+    """Debug endpoint — shows AWS connectivity, env vars, targets file content."""
+    import os, boto3
+
+    result = {
+        "env": {
+            "AWS_DEFAULT_REGION":    os.getenv("AWS_DEFAULT_REGION", "NOT SET"),
+            "AWS_REGIONS":           os.getenv("AWS_REGIONS", "NOT SET"),
+            "EC2_TARGETS_FILE":      os.getenv("EC2_TARGETS_FILE", "NOT SET"),
+            "TARGETS_DIR":           os.getenv("TARGETS_DIR", "NOT SET"),
+            "USE_PRIVATE_IP":        os.getenv("USE_PRIVATE_IP", "NOT SET"),
+            "TAG_FILTER_KEY":        os.getenv("TAG_FILTER_KEY", "(empty = all instances)"),
+            "INCLUDE_UNREACHABLE":   os.getenv("INCLUDE_UNREACHABLE_INSTANCES", "NOT SET"),
+            "DISCOVERY_INTERVAL":    os.getenv("DISCOVERY_INTERVAL_MINUTES", "2"),
+        },
+        "aws_identity": None,
+        "aws_error": None,
+        "ec2_instances_found": [],
+        "targets_file_exists": False,
+        "targets_file_content": None,
+    }
+
+    # Test AWS connectivity
+    try:
+        sts = boto3.client("sts", region_name=os.getenv("AWS_DEFAULT_REGION","us-east-1"))
+        identity = sts.get_caller_identity()
+        result["aws_identity"] = {
+            "account": identity["Account"],
+            "arn":     identity["Arn"],
+            "user_id": identity["UserId"],
+        }
+    except Exception as e:
+        result["aws_error"] = str(e)
+
+    # Test EC2 describe
+    try:
+        region = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+        ec2 = boto3.client("ec2", region_name=region)
+        resp = ec2.describe_instances(Filters=[{"Name":"instance-state-name","Values":["running"]}])
+        for res in resp["Reservations"]:
+            for inst in res["Instances"]:
+                tags = {t["Key"]:t["Value"] for t in inst.get("Tags",[])}
+                result["ec2_instances_found"].append({
+                    "id":           inst["InstanceId"],
+                    "name":         tags.get("Name", inst["InstanceId"]),
+                    "type":         inst["InstanceType"],
+                    "private_ip":   inst.get("PrivateIpAddress",""),
+                    "public_ip":    inst.get("PublicIpAddress",""),
+                    "state":        inst["State"]["Name"],
+                    "az":           inst["Placement"]["AvailabilityZone"],
+                })
+    except Exception as e:
+        result["aws_error"] = (result.get("aws_error") or "") + f" | EC2 error: {e}"
+
+    # Check targets file
+    targets_file = os.getenv("EC2_TARGETS_FILE", "/etc/prometheus/targets/ec2_nodes.yml")
+    if os.path.exists(targets_file):
+        result["targets_file_exists"] = True
+        with open(targets_file) as f:
+            result["targets_file_content"] = f.read()
+    else:
+        result["targets_file_content"] = f"FILE NOT FOUND: {targets_file}"
+
+    return result
+
+
 @app.get("/health")
 async def health():
     now = datetime.now(timezone.utc)

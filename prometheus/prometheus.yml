@@ -39,11 +39,13 @@ scrape_configs:
           env: production
 
   # ── File-based discovery — additional Linux EC2 nodes ─
+  # Auto-discovery agent writes to this file every 2 minutes
+  # Both private IPs (same VPC) and public IPs (cross-VPC) supported
   - job_name: 'ec2-nodes'
     file_sd_configs:
       - files:
           - /etc/prometheus/targets/ec2_nodes.yml
-        refresh_interval: 30s
+        refresh_interval: 15s
 
   # ── Windows Exporter — Windows EC2 instances ──────────
   # Windows Exporter (port 9182) replaces Node Exporter on Windows.
