@@ -1,20 +1,16 @@
 # ══════════════════════════════════════════════════════════════════════
-# Windows Exporter Targets
-# Windows Exporter (port 9182) must be installed on each Windows EC2.
-# See docs/windows-setup.md for installation instructions.
-#
-# Security Group requirement:
-#   Allow TCP port 9182 from observability-server (54.88.150.33/32)
+# Windows Exporter Targets — port 9182
+# See docs/windows-setup.md for install instructions
 # ══════════════════════════════════════════════════════════════════════
 
 - targets:
-    - '54.80.223.94:9182'       # windows-server (i-00baf21d89dfb8504)
+    - '54.80.223.94:9182'
   labels:
+    instance: 'windows-server'
+    instance_id: 'i-00baf21d89dfb8504'
+    instance_type: 't3.xlarge'
     env: production
     region: us-east-1
     az: us-east-1d
     os: windows
-    service: windows-exporter
-    instance: windows-server
-    instance_id: i-00baf21d89dfb8504
-    instance_type: t3.xlarge
+    job: windows-exporter
