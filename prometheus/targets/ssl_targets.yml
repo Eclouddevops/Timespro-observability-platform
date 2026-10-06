@@ -4,36 +4,13 @@
 # Alerts: WARNING at 30 days, CRITICAL at 7 days before expiry
 # ══════════════════════════════════════════════════════════════════════
 
-# ── Main Website SSL ───────────────────────────────────────────────────
-- targets:
-    - 'aiobz.com:443'
-    - 'www.aiobz.com:443'
-  labels:
-    env: production
-    service: ssl
-    category: main
-    owner: eclouddevops
-
-# ── E-Commerce SSL ─────────────────────────────────────────────────────
+# Add SSL targets below — one entry per domain group
+# Example:
 # - targets:
-#     - 'shop.eclouddevops.com:443'
+#     - 'yourdomain.com:443'
+#     - 'www.yourdomain.com:443'
 #   labels:
 #     env: production
 #     service: ssl
-#     category: ecommerce
-
-# ── Car Parking SSL ────────────────────────────────────────────────────
-# - targets:
-#     - 'parking.eclouddevops.com:443'
-#   labels:
-#     env: production
-#     service: ssl
-#     category: car-parking
-
-# ── Mobile Sale SSL ────────────────────────────────────────────────────
-# - targets:
-#     - 'mobiles.eclouddevops.com:443'
-#   labels:
-#     env: production
-#     service: ssl
-#     category: mobile-sale
+#     category: main
+#     owner: your-team

@@ -4,40 +4,24 @@
 # Add your URLs below — Prometheus auto-reloads this file every 30s
 # ══════════════════════════════════════════════════════════════════════
 
-# ── Main Website ───────────────────────────────────────────────────────
-- targets:
-    - 'https://aiobz.com'
-    - 'https://www.aiobz.com'
-  labels:
-    env: production
-    service: website
-    category: main
-    owner: eclouddevops
+# Add website targets below
+# Example:
+# - targets:
+#     - 'https://yourdomain.com'
+#     - 'https://www.yourdomain.com'
+#   labels:
+#     env: production
+#     service: website
+#     category: main
+#     owner: your-team
 
 # ── E-Commerce Website ─────────────────────────────────────────────────
 # - targets:
-#     - 'https://shop.eclouddevops.com'
-#     - 'https://shop.eclouddevops.com/health'
+#     - 'https://shop.yourdomain.com'
 #   labels:
 #     env: production
 #     service: website
 #     category: ecommerce
-
-# ── Car Parking Website ────────────────────────────────────────────────
-# - targets:
-#     - 'https://parking.eclouddevops.com'
-#   labels:
-#     env: production
-#     service: website
-#     category: car-parking
-
-# ── Mobile Sale Website ────────────────────────────────────────────────
-# - targets:
-#     - 'https://mobiles.eclouddevops.com'
-#   labels:
-#     env: production
-#     service: website
-#     category: mobile-sale
 
 # ── API Gateway Endpoints ──────────────────────────────────────────────
 # - targets:
