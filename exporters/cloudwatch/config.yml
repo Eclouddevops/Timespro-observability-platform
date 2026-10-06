@@ -1,4 +1,10 @@
-region: us-east-1
+region: ap-south-1
+# Additional regions supported via cross-account role assumption
+# Primary region: us-east-1 (observability server)
+# CoreProdWorkloadAccount: ap-south-1
+regions:
+  - us-east-1
+  - ap-south-1
 metrics:
 
   # ── EC2 — works for ALL instances, no agent needed ─────────────────

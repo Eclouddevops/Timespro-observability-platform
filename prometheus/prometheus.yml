@@ -33,15 +33,32 @@ scrape_configs:
     static_configs:
       - targets: ['cadvisor:8080']
 
-  # ── CloudWatch Exporter ──────────────────────────────────────────
-  # Already producing: aws_ec2_cpuutilization_average etc.
-  # honor_labels: true keeps the job="aws_ec2" label set by the exporter
+  # ── CloudWatch Exporter — Primary Account (us-east-1) ──────────────
+  # Scrapes primary account metrics (observability server account)
   - job_name: 'cloudwatch'
-    scrape_interval: 60s
-    scrape_timeout: 55s
+    scrape_interval: 300s
+    scrape_timeout: 120s
     honor_labels: true
     static_configs:
       - targets: ['cloudwatch-exporter:9106']
+        labels:
+          account: 'primary'
+
+  # ── CloudWatch Exporter — CoreProdWorkloadAccount (ap-south-1) ──────
+  # Scrapes prod account via cross-account role assumption
+  # Role: arn:aws:iam::986788162487:role/ObservabilityReadOnlyRole
+  - job_name: 'cloudwatch-prod-core'
+    scrape_interval: 300s
+    scrape_timeout: 120s
+    honor_labels: true
+    static_configs:
+      - targets: ['cloudwatch-exporter:9106']
+        labels:
+          account: 'CoreProdWorkloadAccount'
+          account_id: '986788162487'
+          region: 'ap-south-1'
+    params:
+      region: ['ap-south-1']
 
   # ── Blackbox HTTP probing ─────────────────────────────────────────
   - job_name: 'blackbox-http'

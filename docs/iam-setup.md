@@ -158,10 +158,20 @@ aws cloudwatch list-metrics --namespace AWS/EC2 --region us-east-1 | head -20
 To monitor resources in **other AWS accounts**, create a cross-account role
 in each target account:
 
-### In each target account — create this role:
+---
 
-**Role name:** `ObservabilityReadOnlyRole`
-**Trusted entity (trust policy):**
+## ✅ CoreProdWorkloadAccount Setup (Account: 986788162487, Region: ap-south-1)
+
+### Step A — Create IAM Role in CoreProdWorkloadAccount
+
+Log into **AWS Account `986788162487`** and:
+
+1. Go to **IAM → Roles → Create Role**
+2. **Trusted entity** → `AWS account` → `Another AWS account`
+3. Enter the **Observability Server Account ID** (the account where this platform runs)
+4. Click **Next**
+
+**Trust Policy** — paste this JSON:
 ```json
 {
   "Version": "2012-10-17",
@@ -171,17 +181,161 @@ in each target account:
       "Principal": {
         "AWS": "arn:aws:iam::<OBSERVABILITY_ACCOUNT_ID>:role/ObservabilityServerRole"
       },
-      "Action": "sts:AssumeRole"
+      "Action": "sts:AssumeRole",
+      "Condition": {}
     }
   ]
 }
 ```
-Attach the same `ObservabilityPlatformPolicy` to this role.
+> Replace `<OBSERVABILITY_ACCOUNT_ID>` with the account ID of your observability server.
 
-### In `.env` on the observability server:
+5. Attach this **inline policy** named `ObservabilityReadOnlyPolicy`:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CloudWatchReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:GetMetricData",
+        "cloudwatch:GetMetricStatistics",
+        "cloudwatch:ListMetrics",
+        "cloudwatch:DescribeAlarms",
+        "tag:GetResources",
+        "tag:GetTagKeys",
+        "tag:GetTagValues"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "EC2ReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeInstances",
+        "ec2:DescribeRegions",
+        "ec2:DescribeTags",
+        "ec2:DescribeInstanceStatus"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ECSReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:ListClusters",
+        "ecs:ListServices",
+        "ecs:DescribeServices",
+        "ecs:ListTasks",
+        "ecs:DescribeTasks"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "LambdaReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:ListFunctions",
+        "lambda:GetFunction"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "RDSReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "rds:DescribeDBInstances",
+        "rds:DescribeDBClusters"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+6. **Role name:** `ObservabilityReadOnlyRole`
+7. Click **Create Role**
+
+---
+
+### Step B — Verify Role ARN
+
+After creating, the role ARN should be:
+```
+arn:aws:iam::986788162487:role/ObservabilityReadOnlyRole
+```
+
+---
+
+### Step C — Update `.env` on the Observability Server
+
 ```bash
-# Add the role ARNs to assume, comma-separated
-AWS_ROLE_ARN=arn:aws:iam::111122223333:role/ObservabilityReadOnlyRole,arn:aws:iam::444455556666:role/ObservabilityReadOnlyRole
+AWS_ACCOUNTS=[
+  {
+    "id":       "986788162487",
+    "name":     "CoreProdWorkloadAccount",
+    "role_arn": "arn:aws:iam::986788162487:role/ObservabilityReadOnlyRole",
+    "regions":  ["ap-south-1"]
+  }
+]
+```
+
+---
+
+### Step D — Verify Cross-Account Access
+
+SSH into the observability server and test:
+```bash
+# Verify role assumption works
+aws sts assume-role \
+  --role-arn "arn:aws:iam::986788162487:role/ObservabilityReadOnlyRole" \
+  --role-session-name "test-session"
+
+# Should return temporary credentials — if it fails, check the trust policy
+
+# Test EC2 access in ap-south-1
+aws ec2 describe-instances \
+  --region ap-south-1 \
+  --profile assumed-role
+```
+
+---
+
+### Step E — Restart Auto-Discovery
+
+```bash
+cd /observability-platform
+docker compose restart auto-discovery
+
+# Trigger immediate scan
+curl -X POST http://localhost:9877/collect
+
+# Check instances found
+curl -s http://localhost:9877/status | python3 -m json.tool
+```
+
+---
+
+## Adding More Accounts in Future
+
+To add another account, repeat Steps A–E and append to `AWS_ACCOUNTS` in `.env`:
+
+```bash
+AWS_ACCOUNTS=[
+  {
+    "id":       "986788162487",
+    "name":     "CoreProdWorkloadAccount",
+    "role_arn": "arn:aws:iam::986788162487:role/ObservabilityReadOnlyRole",
+    "regions":  ["ap-south-1"]
+  },
+  {
+    "id":       "NEXT_ACCOUNT_ID",
+    "name":     "NextAccountName",
+    "role_arn": "arn:aws:iam::NEXT_ACCOUNT_ID:role/ObservabilityReadOnlyRole",
+    "regions":  ["us-east-1"]
+  }
+]
 ```
 
 ---
