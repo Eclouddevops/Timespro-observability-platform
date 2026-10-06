@@ -4,24 +4,15 @@
 # Manual entries below as fallback
 # ══════════════════════════════════════════════════════════════════════
 
-# ── observability-server (i-0b7b07809dc9007ac) ─────────────────────
-# Node Exporter runs on HOST (not Docker) via 172.18.0.1 gateway
-# Handled by node-exporter job in prometheus.yml — NOT here
-
-# ── Monitoring instance (i-0931669571a326fd4) ──────────────────────
+# ── observability-server (i-018d82c930796cb2e) ─────────────────────
 - targets:
-    - '54.92.186.206:9100'
+    - '172.31.32.117:9100'
   labels:
-    instance: 'Monitoring'
-    instance_id: 'i-0931669571a326fd4'
-    instance_type: 't3.micro'
+    instance: 'observability-server'
+    instance_id: 'i-018d82c930796cb2e'
     env: production
     region: us-east-1
-    az: us-east-1d
     os: linux
-    public_ip: '54.92.186.206'
+    private_ip: '172.31.32.117'
+    public_ip: '52.90.226.11'
     monitored_by: manual
-
-# ── windows-server (i-00baf21d89dfb8504) ──────────────────────────
-# Windows Exporter on port 9182 — handled by windows-exporter job
-# See prometheus/targets/windows_nodes.yml
