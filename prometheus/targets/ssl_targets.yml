@@ -4,13 +4,12 @@
 # Alerts: WARNING at 30 days, CRITICAL at 7 days before expiry
 # ══════════════════════════════════════════════════════════════════════
 
-# Add SSL targets below — one entry per domain group
-# Example:
-# - targets:
-#     - 'yourdomain.com:443'
-#     - 'www.yourdomain.com:443'
-#   labels:
-#     env: production
-#     service: ssl
-#     category: main
-#     owner: your-team
+# ── TimesPro SSL ───────────────────────────────────────────────────────
+- targets:
+    - 'timespro.com:443'
+    - 'console.timespro.com:443'
+  labels:
+    env: production
+    service: ssl
+    category: main
+    owner: timespro

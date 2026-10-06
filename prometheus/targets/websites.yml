@@ -4,29 +4,12 @@
 # Add your URLs below — Prometheus auto-reloads this file every 30s
 # ══════════════════════════════════════════════════════════════════════
 
-# Add website targets below
-# Example:
-# - targets:
-#     - 'https://yourdomain.com'
-#     - 'https://www.yourdomain.com'
-#   labels:
-#     env: production
-#     service: website
-#     category: main
-#     owner: your-team
-
-# ── E-Commerce Website ─────────────────────────────────────────────────
-# - targets:
-#     - 'https://shop.yourdomain.com'
-#   labels:
-#     env: production
-#     service: website
-#     category: ecommerce
-
-# ── API Gateway Endpoints ──────────────────────────────────────────────
-# - targets:
-#     - 'https://<api-id>.execute-api.us-east-1.amazonaws.com/prod/health'
-#   labels:
-#     env: production
-#     service: api-gateway
-#     region: us-east-1
+# ── TimesPro Websites ──────────────────────────────────────────────────
+- targets:
+    - 'https://timespro.com'
+    - 'https://console.timespro.com'
+  labels:
+    env: production
+    service: website
+    category: main
+    owner: timespro
